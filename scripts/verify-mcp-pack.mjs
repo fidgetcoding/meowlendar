@@ -44,9 +44,12 @@ function handshake(command, args, cwd) {
     let stderr = ''
     child.stderr.on('data', (d) => (stderr += d))
     child.on('error', reject)
+    child.stdin.on('error', () => {}) // The child is killed once it has answered.
     child.stdout.on('data', (d) => {
       stdout += d
-      for (const line of stdout.split('\n')) {
+      const lines = stdout.split('\n')
+      stdout = lines.pop() ?? ''
+      for (const line of lines) {
         if (!line.trim()) continue
         let msg
         try {
