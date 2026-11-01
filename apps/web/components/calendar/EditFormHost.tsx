@@ -13,7 +13,6 @@ import { useUIStore } from '@/lib/stores/ui-store'
 import { useTask } from '@/lib/hooks/use-tasks'
 import { useUndoable } from '@/lib/hooks/use-undoable'
 import { ItemEditForm, type ItemEditFormInitialData } from './ItemEditForm'
-import type { RecurrenceEditScope } from './RecurrenceEditDialog'
 import { parseRoutineItemId } from './grid-helpers'
 import { buildConvertBody, convertRequirements, type ItemType } from '@/lib/convert'
 
@@ -348,8 +347,7 @@ export function EditFormHost({
 
   async function handleSave(
     type: ItemType,
-    data: Record<string, unknown>,
-    _scope?: RecurrenceEditScope
+    data: Record<string, unknown>
   ) {
     if (!isEdit) {
       createItem(type, data)
@@ -372,7 +370,7 @@ export function EditFormHost({
     if (ok) closeEditForm()
   }
 
-  function handleDelete(_scope?: RecurrenceEditScope) {
+  function handleDelete() {
     if (!isEdit) {
       closeEditForm()
       return

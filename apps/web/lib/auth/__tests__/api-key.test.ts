@@ -3,9 +3,6 @@ import { NextRequest } from 'next/server'
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
-const mockSelect = vi.fn()
-const mockEq = vi.fn()
-const mockUpdate = vi.fn()
 const mockFrom = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({
@@ -85,7 +82,6 @@ describe('authenticateApiKey', () => {
   it('returns userId when key hash matches (timing-safe)', async () => {
     const apiKey = 'pk_test1234rest_of_key'
     const keyHash = await sha256Hex(apiKey)
-    const prefix = apiKey.slice(0, 8) // 'pk_test1'
 
     const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
     const mockUpdateCall = vi.fn().mockReturnValue({ eq: mockUpdateEq })

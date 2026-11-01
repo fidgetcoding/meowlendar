@@ -19,6 +19,7 @@ vi.mock('@/lib/auth/helpers', () => ({
 }))
 
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
 
 const TEST_USER_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -32,7 +33,7 @@ function createRequest(body?: unknown): NextRequest {
 }
 
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
   const methods = ['select', 'update', 'eq', 'gte', 'lte', 'not', 'order', 'is']
   for (const m of methods) builder[m] = vi.fn().mockReturnValue(builder)
   builder.then = (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
@@ -45,7 +46,7 @@ function mockAuthWithTasks(results: { data: unknown; error: unknown }[]) {
   const supabase = {
     from: vi.fn().mockImplementation(() => makeQueryBuilder(results[call++] ?? results[results.length - 1]!)),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 
@@ -84,7 +85,7 @@ describe('POST /api/tasks/reflow', () => {
     expect(body.moved).toBe(1) // t1 stays; t2 is pushed to 15:00
     expect(body.tasks).toHaveLength(2)
     // t2 now starts where t1 ends (15:00-04:00 === 19:00Z).
-    const t2 = body.tasks.find((t: any) => t.id === 't2')
+    const t2 = body.tasks.find((t: { id: string }) => t.id === 't2')
     expect(new Date(t2.scheduled_start).toISOString()).toBe('2026-06-15T19:00:00.000Z')
   })
 

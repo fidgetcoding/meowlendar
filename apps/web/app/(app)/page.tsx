@@ -92,15 +92,6 @@ export default function AppPage() {
     [undoable, tasks]
   )
 
-  const handleTaskUpdate = useCallback(
-    (taskId: string, updates: Partial<import('@poolendar/types').Task>) => {
-      const prev = tasks.find((t) => t.id === taskId)
-      if (!prev) return
-      undoable.updateTask(taskId, updates, prev)
-    },
-    [undoable, tasks]
-  )
-
   const handleTaskCreate = useCallback(
     (data: {
       title: string
@@ -192,7 +183,6 @@ export default function AppPage() {
             tags={tags}
             onTaskMove={handleTaskMove}
             onTaskReorder={handleTaskReorder}
-            onTaskUpdate={handleTaskUpdate}
             onTaskCreate={handleTaskCreate}
             onTaskClick={handleTaskClick}
             onTaskComplete={handleTaskComplete}
@@ -205,7 +195,6 @@ export default function AppPage() {
             tasks={tasks}
             routines={routines}
             calendars={calendars}
-            tags={tags}
             selfEmails={selfEmails}
             userId={userId}
             currentDate={currentDate}

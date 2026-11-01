@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       .eq('status', 'pending')
 
     for (const inst of instances ?? []) {
-      const routine = (inst as any).routines as {
+      const routine = inst.routines as unknown as {
         id: string; user_id: string; title: string
         start_time: string; reminders: { minutes_before: number }[]
       }

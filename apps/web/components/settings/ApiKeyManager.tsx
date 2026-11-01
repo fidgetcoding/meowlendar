@@ -5,7 +5,6 @@ import { Key, Copy, Trash2, Plus, Check, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { SettingsSection } from './SettingsSection'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { ApiKey } from '@poolendar/types'
 
@@ -15,7 +14,6 @@ interface ApiKeyManagerProps {
 }
 
 export function ApiKeyManager({ apiKeys, onKeysChange }: ApiKeyManagerProps) {
-  const supabase = createClient()
   const [creating, setCreating] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)

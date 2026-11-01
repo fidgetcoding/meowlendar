@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { SearchResult } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
 
+type TaskTagRef = { task_id: string }
+
 // ---------------------------------------------------------------------------
 // Query-key factory
 // ---------------------------------------------------------------------------
@@ -120,7 +122,7 @@ export function useSearch(
               if (error) throw error
               if (data) {
                 for (const row of data) {
-                  const attendees = ((row as any).attendees ?? []) as { email: string; name?: string }[]
+                  const attendees = (row.attendees ?? []) as { email: string; name?: string }[]
                   const matched = attendees.find(
                     (a) => a.email?.toLowerCase().includes(debouncedQuery.toLowerCase())
                   )
@@ -172,7 +174,7 @@ export function useSearch(
             .then(async ({ data: tagMatches, error }) => {
               if (error) throw error
               const tagTaskIds = tagMatches?.flatMap((t) =>
-                ((t.task_tags as any[]) ?? []).map((tt: any) => tt.task_id)
+                ((t.task_tags as TaskTagRef[] | null) ?? []).map((tt) => tt.task_id)
               ) ?? []
               if (tagTaskIds.length === 0) return
 
@@ -185,7 +187,7 @@ export function useSearch(
 
               for (const row of tagTasks ?? []) {
                 const matchedTagName = tagMatches?.find((tag) =>
-                  ((tag.task_tags as any[]) ?? []).some((tt: any) => tt.task_id === row.id)
+                  ((tag.task_tags as TaskTagRef[] | null) ?? []).some((tt) => tt.task_id === row.id)
                 )?.name
                 pushUnique({
                   type: 'task',

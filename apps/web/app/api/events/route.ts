@@ -1,16 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
 import { createGoogleEvent } from '../../../lib/google/calendar'
+import type { GoogleEventInsert } from '../../../lib/google/types'
 import { createEventSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
-import type { CalendarItem } from '@poolendar/types'
+import type { CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
 
 // The kinds `GET /api/events` can return. `events` is always included (this is
 // the events endpoint); `tasks` and `routines` are on by default and can be
 // narrowed via `?include=`. This is the spec #22 acceptance surface: a task
 // created with scheduled_start/scheduled_end comes back here without any drag.
-const ALL_KINDS = ['events', 'tasks', 'routines'] as const
 const DEFAULT_INCLUDE = 'events,tasks,routines'
+
+/** A routine_instances row joined to its parent routine. */
+interface RoutineInstanceRow {
+  id: string
+  routine_id: string
+  date: string
+  status: RoutineInstanceStatus
+  override_start_time: string | null
+  override_end_time: string | null
+  override_title: string | null
+  routines: {
+    user_id: string
+    title: string
+    start_time: string
+    end_time: string
+    timezone: string
+    calendar_id: string | null
+  } | null
+}
 
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
@@ -98,7 +117,7 @@ export async function GET(request: NextRequest) {
       .gte('date', startDate)
       .lte('date', endDate)
 
-    for (const ri of (data ?? []) as any[]) {
+    for (const ri of (data ?? []) as unknown as RoutineInstanceRow[]) {
       const routine = ri.routines
       if (!routine || routine.user_id !== userId) continue
       if (calendarId && routine.calendar_id !== calendarId) continue
@@ -208,22 +227,18 @@ export async function POST(request: NextRequest) {
 
   // Sync to Google Calendar
   try {
-    const googleEventBody: Record<string, any> = {
+    const googleEventBody: GoogleEventInsert = {
       summary: input.title,
       description: input.notes ?? undefined,
       location: input.location ?? undefined,
       visibility: input.privacy === 'private' ? 'private' : 'public',
       transparency: input.visibility === 'free' ? 'transparent' : 'opaque',
-    }
-
-    if (input.is_all_day) {
-      const startDate = input.start_time.split('T')[0]
-      const endDate = input.end_time.split('T')[0]
-      googleEventBody.start = { date: startDate, timeZone: input.timezone }
-      googleEventBody.end = { date: endDate, timeZone: input.timezone }
-    } else {
-      googleEventBody.start = { dateTime: input.start_time, timeZone: input.timezone }
-      googleEventBody.end = { dateTime: input.end_time, timeZone: input.timezone }
+      start: input.is_all_day
+        ? { date: input.start_time.split('T')[0], timeZone: input.timezone }
+        : { dateTime: input.start_time, timeZone: input.timezone },
+      end: input.is_all_day
+        ? { date: input.end_time.split('T')[0], timeZone: input.timezone }
+        : { dateTime: input.end_time, timeZone: input.timezone },
     }
 
     if (input.attendees.length > 0) {
@@ -250,12 +265,12 @@ export async function POST(request: NextRequest) {
     const googleResult = await createGoogleEvent(
       calendar.google_account_id,
       calendar.google_calendar_id,
-      googleEventBody as Parameters<typeof createGoogleEvent>[2],
+      googleEventBody,
       input.conferencing
     )
 
     // Update the local event with Google's IDs and conferencing URL
-    const updateFields: Record<string, any> = {
+    const updateFields: Record<string, unknown> = {
       google_event_id: googleResult.id,
       etag: googleResult.etag,
       sync_status: 'synced',

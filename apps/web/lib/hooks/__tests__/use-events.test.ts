@@ -7,6 +7,7 @@ import {
   resetSupabaseMocks,
 } from './mock-supabase'
 import { createTestQueryClient } from './test-utils'
+import { omit } from '@/lib/omit'
 import { useEvents, useEvent, useCreateEvent, useUpdateEvent, useDeleteEvent, eventKeys } from '../use-events'
 import type { CalendarEvent } from '@poolendar/types'
 
@@ -168,8 +169,7 @@ describe('useCreateEvent', () => {
     const { result } = renderHook(() => useCreateEvent(), { wrapper })
 
     await act(async () => {
-      const { id, created_at, updated_at, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(omit(created, ['id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -188,8 +188,7 @@ describe('useCreateEvent', () => {
     const { result } = renderHook(() => useCreateEvent(), { wrapper })
 
     await act(async () => {
-      const { id, created_at, updated_at, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(omit(created, ['id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -213,8 +212,7 @@ describe('useCreateEvent', () => {
     const { result } = renderHook(() => useCreateEvent(), { wrapper })
 
     await act(async () => {
-      const { id, created_at, updated_at, ...input } = makeEvent({ id: 'temp' })
-      result.current.mutate(input as any)
+      result.current.mutate(omit(makeEvent({ id: 'temp' }), ['id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))

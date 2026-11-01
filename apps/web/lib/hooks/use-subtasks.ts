@@ -212,7 +212,6 @@ export function useDeleteSubtask() {
   return useMutation({
     mutationFn: async ({
       id,
-      task_id,
     }: {
       id: string
       task_id: string

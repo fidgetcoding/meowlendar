@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server'
 type MockResult = { data: unknown; error: unknown }
 
 function createChain(result: MockResult = { data: null, error: null }) {
-  const chain: Record<string, any> = {}
+  const chain: Record<string | symbol, unknown> = {}
   const methods = [
     'from', 'select', 'insert', 'update', 'delete',
     'eq', 'in', 'lt', 'gt', 'not', 'is', 'or', 'ilike',
@@ -18,7 +18,7 @@ function createChain(result: MockResult = { data: null, error: null }) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
   chain.then = (resolve: (v: MockResult) => void) => resolve(result)
-  ;(chain as any)[Symbol.toStringTag] = 'Promise'
+  chain[Symbol.toStringTag] = 'Promise'
   chain.single = vi.fn().mockReturnValue({
     ...chain,
     then: (resolve: (v: MockResult) => void) => resolve(result),
@@ -57,11 +57,11 @@ function createSupabaseMock() {
 const mockAuthenticate = vi.fn()
 
 vi.mock('@/lib/auth/helpers', () => ({
-  authenticate: (...args: any[]) => mockAuthenticate(...args),
-  isAuthError: (result: any) =>
+  authenticate: (...args: unknown[]) => mockAuthenticate(...args),
+  isAuthError: (result: Partial<Response>) =>
     result instanceof Response ||
     (result && typeof result.status === 'number' && typeof result.json === 'function'),
-  validationError: (issues: any[]) => {
+  validationError: (issues: { path: (string | number)[]; message: string }[]) => {
     const details: Record<string, string[]> = {}
     for (const issue of issues) {
       const key = issue.path.join('.') || '_root'

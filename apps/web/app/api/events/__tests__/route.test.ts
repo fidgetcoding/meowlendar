@@ -31,6 +31,8 @@ vi.mock('@/lib/google/calendar', () => ({
 }))
 
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
+import { omit } from '@/lib/omit'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ function createRequest(method: string, url: string, body?: unknown): NextRequest
  * to `result`.
  */
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
 
   const methods = [
     'select', 'insert', 'update', 'delete', 'upsert',
@@ -98,7 +100,7 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 
@@ -219,7 +221,7 @@ describe('POST /api/events', () => {
   it('rejects request with missing title as 422 validation error', async () => {
     mockAuthWithTables({})
 
-    const { title: _title, ...noTitle } = validEventBody()
+    const noTitle = omit(validEventBody(), ['title'])
     const req = createRequest('POST', '/api/events', noTitle)
     const res = await POST(req)
 

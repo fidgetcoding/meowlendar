@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ describe('Google Calendar API wrappers', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.resetAllMocks()
-    ;(globalThis.fetch as any).mockReset()
+    ;(globalThis.fetch as Mock).mockReset()
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
@@ -64,7 +64,7 @@ describe('Google Calendar API wrappers', () => {
 
   describe('googleCalendarRequest()', () => {
     it('sends GET request with Bearer auth header', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ items: [] }),
@@ -76,7 +76,7 @@ describe('Google Calendar API wrappers', () => {
       )
 
       expect(result).toEqual({ items: [] })
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toBe(
         'https://www.googleapis.com/calendar/v3/calendars/primary/events'
       )
@@ -84,7 +84,7 @@ describe('Google Calendar API wrappers', () => {
     })
 
     it('throws on non-OK response', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 403,
         text: async () => 'Forbidden',
@@ -96,7 +96,7 @@ describe('Google Calendar API wrappers', () => {
     })
 
     it('returns null for 204 No Content', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 204,
       })
@@ -123,7 +123,7 @@ describe('Google Calendar API wrappers', () => {
       const mockUpdate = vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({ error: null }),
       })
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -144,7 +144,7 @@ describe('Google Calendar API wrappers', () => {
         }),
       })
 
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           access_token: 'new-token',
@@ -157,7 +157,7 @@ describe('Google Calendar API wrappers', () => {
 
       expect(token).toBe('new-token')
       // Verify token refresh request
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toBe('https://oauth2.googleapis.com/token')
       const body = new URLSearchParams(opts.body)
       expect(body.get('grant_type')).toBe('refresh_token')
@@ -167,7 +167,7 @@ describe('Google Calendar API wrappers', () => {
     it('throws when refresh request fails', async () => {
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -186,7 +186,7 @@ describe('Google Calendar API wrappers', () => {
         }),
       })
 
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 401,
       })
@@ -200,7 +200,7 @@ describe('Google Calendar API wrappers', () => {
     it('throws when account is not found in DB', async () => {
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -224,7 +224,7 @@ describe('Google Calendar API wrappers', () => {
 
   describe('createGoogleEvent()', () => {
     it('sends POST request with event payload', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({
@@ -243,7 +243,7 @@ describe('Google Calendar API wrappers', () => {
 
       expect(result).toEqual({ id: 'google-event-1', etag: '"etag-abc"' })
 
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('/calendars/primary/events')
       expect(opts.method).toBe('POST')
       const body = JSON.parse(opts.body)
@@ -251,7 +251,7 @@ describe('Google Calendar API wrappers', () => {
     })
 
     it('appends conferenceDataVersion=1 when conferencing is true', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ id: 'e1', etag: '"e"' }),
@@ -265,7 +265,7 @@ describe('Google Calendar API wrappers', () => {
 
       await createGoogleEvent('acct-1', 'primary', event, true)
 
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('conferenceDataVersion=1')
       // conferenceData should be auto-added to the payload
       const body = JSON.parse(opts.body)
@@ -280,7 +280,7 @@ describe('Google Calendar API wrappers', () => {
 
   describe('updateGoogleEvent()', () => {
     it('sends PATCH request to the correct event URL', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ id: 'evt-1', etag: '"new-etag"' }),
@@ -292,7 +292,7 @@ describe('Google Calendar API wrappers', () => {
 
       expect(result).toEqual({ id: 'evt-1', etag: '"new-etag"' })
 
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('/calendars/cal-1/events/evt-1')
       expect(opts.method).toBe('PATCH')
     })
@@ -302,20 +302,20 @@ describe('Google Calendar API wrappers', () => {
 
   describe('deleteGoogleEvent()', () => {
     it('sends DELETE request', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 204,
       })
 
       await deleteGoogleEvent('acct-1', 'cal-1', 'evt-1')
 
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [url, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('/calendars/cal-1/events/evt-1')
       expect(opts.method).toBe('DELETE')
     })
 
     it('handles 404 gracefully (event already deleted)', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 404,
       })
@@ -327,7 +327,7 @@ describe('Google Calendar API wrappers', () => {
     })
 
     it('handles 410 Gone gracefully', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 410,
       })
@@ -338,7 +338,7 @@ describe('Google Calendar API wrappers', () => {
     })
 
     it('throws on unexpected error status', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 500,
       })
@@ -353,7 +353,7 @@ describe('Google Calendar API wrappers', () => {
 
   describe('listGoogleEvents()', () => {
     it('returns events with sync token support', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({
@@ -370,14 +370,14 @@ describe('Google Calendar API wrappers', () => {
       expect(result.items).toHaveLength(2)
       expect(result.nextSyncToken).toBe('sync-token-abc')
 
-      const [url] = (globalThis.fetch as any).mock.calls[0]
+      const [url] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('timeMin=')
       expect(url).toContain('timeMax=')
       expect(url).toContain('maxResults=250')
     })
 
     it('passes syncToken as query parameter for incremental sync', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: async () => ({ items: [], nextSyncToken: 'new-token' }),
@@ -387,7 +387,7 @@ describe('Google Calendar API wrappers', () => {
         syncToken: 'existing-sync-token',
       })
 
-      const [url] = (globalThis.fetch as any).mock.calls[0]
+      const [url] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(url).toContain('syncToken=existing-sync-token')
     })
   })

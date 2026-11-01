@@ -20,6 +20,7 @@ vi.mock('@/lib/google/oauth', () => ({
 
 import { POST } from '../route'
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
 import { optionalEnv } from '@/lib/env'
 import { getGoogleOAuthUrl } from '@/lib/google/oauth'
 
@@ -36,7 +37,7 @@ describe('POST /api/calendars/connect', () => {
     vi.clearAllMocks()
     vi.mocked(authenticate).mockResolvedValue({
       userId: TEST_USER_ID,
-      supabase: {} as any,
+      supabase: {} as AuthResult['supabase'],
     })
   })
 

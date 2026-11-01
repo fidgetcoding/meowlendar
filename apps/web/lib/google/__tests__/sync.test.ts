@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import type { CalendarEvent, Calendar } from '@poolendar/types'
+import type { GoogleEvent } from '../types'
 
 // ── Calendar module mock ───────────────────────────────────────────────────────
 
@@ -11,12 +12,12 @@ const mockGetGoogleAccessToken = vi.fn()
 const mockGoogleCalendarRequest = vi.fn()
 
 vi.mock('../calendar', () => ({
-  createGoogleEvent: (...args: any[]) => mockCreateGoogleEvent(...args),
-  updateGoogleEvent: (...args: any[]) => mockUpdateGoogleEvent(...args),
-  deleteGoogleEvent: (...args: any[]) => mockDeleteGoogleEvent(...args),
-  listGoogleEvents: (...args: any[]) => mockListGoogleEvents(...args),
-  getGoogleAccessToken: (...args: any[]) => mockGetGoogleAccessToken(...args),
-  googleCalendarRequest: (...args: any[]) => mockGoogleCalendarRequest(...args),
+  createGoogleEvent: (...args: unknown[]) => mockCreateGoogleEvent(...args),
+  updateGoogleEvent: (...args: unknown[]) => mockUpdateGoogleEvent(...args),
+  deleteGoogleEvent: (...args: unknown[]) => mockDeleteGoogleEvent(...args),
+  listGoogleEvents: (...args: unknown[]) => mockListGoogleEvents(...args),
+  getGoogleAccessToken: (...args: unknown[]) => mockGetGoogleAccessToken(...args),
+  googleCalendarRequest: (...args: unknown[]) => mockGoogleCalendarRequest(...args),
 }))
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ const mockSupabaseFrom = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: vi.fn(() => ({
-    from: (...args: any[]) => mockSupabaseFrom(...args),
+    from: (...args: unknown[]) => mockSupabaseFrom(...args),
   })),
 }))
 
@@ -92,7 +93,7 @@ describe('Google Calendar Sync', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.resetAllMocks()
-    ;(globalThis.fetch as any).mockReset()
+    ;(globalThis.fetch as Mock).mockReset()
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
@@ -113,7 +114,7 @@ describe('Google Calendar Sync', () => {
 
   describe('mapGoogleEventToLocal()', () => {
     it('maps a timed Google event to local schema', () => {
-      const googleEvent = {
+      const googleEvent: GoogleEvent = {
         id: 'g-evt-1',
         summary: 'Team sync',
         description: 'Weekly standup',
@@ -409,7 +410,7 @@ describe('Google Calendar Sync', () => {
       const calendar = makeCalendar()
 
       // The push uses updateGoogleEventWithEtag (internal), which calls fetch directly
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           id: 'existing-g-evt',
@@ -432,7 +433,7 @@ describe('Google Calendar Sync', () => {
       const result = await pushEvent(event, calendar)
 
       // Verify If-Match header was sent
-      const [url, opts] = (globalThis.fetch as any).mock.calls[0]
+      const [, opts] = (globalThis.fetch as Mock).mock.calls[0]!
       expect(opts.headers['If-Match']).toBe('"old-etag"')
       expect(result.etag).toBe('"updated-etag"')
     })
@@ -446,7 +447,7 @@ describe('Google Calendar Sync', () => {
       const calendar = makeCalendar()
 
       // First call: 412 Precondition Failed
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 412,
         text: async () => 'Precondition Failed',
@@ -531,7 +532,7 @@ describe('Google Calendar Sync', () => {
 
       mockSupabaseFrom.mockReturnValue({ update: mockUpdateFn })
 
-      const result = await pushEvent(event, calendar)
+      await pushEvent(event, calendar)
 
       // Verify the conferencing URL was stored
       const updateCall = mockUpdateFn.mock.calls[0]![0]
@@ -839,7 +840,7 @@ describe('Google Calendar Sync', () => {
     }
 
     it('increments retry_count and backs off when the re-push fails', async () => {
-      const event: any = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 0 }
+      const event = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 0 }
       mockCreateGoogleEvent.mockRejectedValue(new Error('google down'))
 
       const updateEq = vi.fn().mockResolvedValue({ error: null })
@@ -855,7 +856,7 @@ describe('Google Calendar Sync', () => {
     })
 
     it('gives up on the 5th attempt (retry_count reaches the cap)', async () => {
-      const event: any = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 4 }
+      const event = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 4 }
       mockCreateGoogleEvent.mockRejectedValue(new Error('still down'))
 
       const updateEq = vi.fn().mockResolvedValue({ error: null })
@@ -869,7 +870,7 @@ describe('Google Calendar Sync', () => {
     })
 
     it('marks the event synced when the re-push succeeds', async () => {
-      const event: any = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 2 }
+      const event = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 2 }
       mockCreateGoogleEvent.mockResolvedValue({ id: 'g-new', etag: '"e"' })
 
       // pushEvent's success path: update → eq → select → single
@@ -888,7 +889,7 @@ describe('Google Calendar Sync', () => {
     })
 
     it('gives up immediately when the owning calendar is gone', async () => {
-      const event: any = { ...makeEvent({ id: 'evt-orphan', google_event_id: null }), retry_count: 0 }
+      const event = { ...makeEvent({ id: 'evt-orphan', google_event_id: null }), retry_count: 0 }
 
       const updateEq = vi.fn().mockResolvedValue({ error: null })
       const updateFn = vi.fn().mockReturnValue({ eq: updateEq })

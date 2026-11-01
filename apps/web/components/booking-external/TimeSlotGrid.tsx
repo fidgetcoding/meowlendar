@@ -50,7 +50,7 @@ export function TimeSlotGrid({
                 ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]'
                 : 'border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
             }`}
-            aria-selected={isSelected}
+            aria-pressed={isSelected}
           >
             {formatTime(slot.start)}
           </button>

@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server'
 type MockResult = { data: unknown; error: unknown }
 
 function createChain(result: MockResult = { data: null, error: null }) {
-  const chain: Record<string, any> = {}
+  const chain: Record<string | symbol, unknown> = {}
   const methods = [
     'from', 'select', 'insert', 'update', 'delete',
     'eq', 'in', 'lt', 'gt', 'not', 'is', 'or', 'ilike',
@@ -18,7 +18,7 @@ function createChain(result: MockResult = { data: null, error: null }) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
   chain.then = (resolve: (v: MockResult) => void) => resolve(result)
-  ;(chain as any)[Symbol.toStringTag] = 'Promise'
+  chain[Symbol.toStringTag] = 'Promise'
   chain.single = vi.fn().mockReturnValue({
     ...chain,
     then: (resolve: (v: MockResult) => void) => resolve(result),
@@ -57,8 +57,8 @@ function createSupabaseMock() {
 const mockAuthenticate = vi.fn()
 
 vi.mock('@/lib/auth/helpers', () => ({
-  authenticate: (...args: any[]) => mockAuthenticate(...args),
-  isAuthError: (result: any) =>
+  authenticate: (...args: unknown[]) => mockAuthenticate(...args),
+  isAuthError: (result: Partial<Response>) =>
     result instanceof Response ||
     (result && typeof result.status === 'number' && typeof result.json === 'function'),
 }))
@@ -153,7 +153,7 @@ describe('GET /api/search', () => {
 
     expect(res.status).toBe(200)
     expect(json.length).toBeGreaterThanOrEqual(2)
-    const ids = json.map((r: any) => r.id)
+    const ids = json.map((r: { id: string }) => r.id)
     expect(ids).toContain('e-1')
     expect(ids).toContain('t-1')
   })
@@ -179,7 +179,7 @@ describe('GET /api/search', () => {
     const json = (await res.json()).items
 
     expect(res.status).toBe(200)
-    expect(json.every((r: any) => r.type === 'task')).toBe(true)
+    expect(json.every((r: { type: string }) => r.type === 'task')).toBe(true)
   })
 
   it('respects limit parameter (capped at 50)', async () => {
@@ -220,7 +220,7 @@ describe('GET /api/search', () => {
 
     expect(res.status).toBe(200)
     // Should only have one entry for e-1 despite two search strategies matching
-    const eventResults = json.filter((r: any) => r.id === 'e-1')
+    const eventResults = json.filter((r: { id: string }) => r.id === 'e-1')
     expect(eventResults).toHaveLength(1)
   })
 

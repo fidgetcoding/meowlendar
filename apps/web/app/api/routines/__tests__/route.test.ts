@@ -23,6 +23,8 @@ vi.mock('@/lib/auth/helpers', () => ({
 }))
 
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
+import { omit } from '@/lib/omit'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ function createRequest(method: string, url: string, body?: unknown): NextRequest
 }
 
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
   const methods = [
     'select', 'insert', 'update', 'delete', 'upsert',
     'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike',
@@ -61,7 +63,7 @@ function mockAuth(result: { data: unknown; error: unknown }) {
   const supabase = {
     from: vi.fn().mockReturnValue(makeQueryBuilder(result)),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 
@@ -150,7 +152,7 @@ describe('POST /api/routines', () => {
   it('rejects missing recurrence_rule with 400', async () => {
     mockAuth({ data: null, error: null })
 
-    const { recurrence_rule: _rr, ...noRule } = validRoutineBody()
+    const noRule = omit(validRoutineBody(), ['recurrence_rule'])
     const req = createRequest('POST', '/api/routines', noRule)
     const res = await POST(req)
 
@@ -160,7 +162,7 @@ describe('POST /api/routines', () => {
   it('rejects missing title with 400', async () => {
     mockAuth({ data: null, error: null })
 
-    const { title: _t, ...noTitle } = validRoutineBody()
+    const noTitle = omit(validRoutineBody(), ['title'])
     const req = createRequest('POST', '/api/routines', noTitle)
     const res = await POST(req)
 

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `${source_type} not found` }, { status: 404 })
   }
 
-  let result: any = null
+  let result: { type: 'event' | 'task' | 'routine'; data: unknown } | null = null
 
   // EVENT -> TASK
   if (source_type === 'event' && target_type === 'task') {
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     const startTime = source.scheduled_start || new Date().toISOString()
     const endTime = source.scheduled_end || new Date(Date.now() + (source.time_estimate_minutes || 30) * 60000).toISOString()
 
-    const eventRow: Record<string, any> = {
+    const eventRow: Record<string, unknown> = {
       user_id: userId,
       calendar_id: calendar_id,
       title: source.title,
@@ -274,7 +274,6 @@ export async function POST(request: NextRequest) {
 
   // ROUTINE -> TASK
   else if (source_type === 'routine' && target_type === 'task') {
-    const now = new Date()
     const [startH, startM] = source.start_time.split(':').map(Number)
     const [endH, endM] = source.end_time.split(':').map(Number)
     const durationMin = (endH * 60 + endM) - (startH * 60 + startM)
@@ -333,7 +332,7 @@ export async function POST(request: NextRequest) {
     const endDate = new Date(now)
     endDate.setHours(endH, endM, 0, 0)
 
-    const eventRow: Record<string, any> = {
+    const eventRow: Record<string, unknown> = {
       user_id: userId,
       calendar_id,
       title: source.title,

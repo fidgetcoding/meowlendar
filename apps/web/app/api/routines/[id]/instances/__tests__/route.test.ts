@@ -28,6 +28,7 @@ vi.mock('rrule', () => {
 })
 
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ function createRequest(method: string, url: string): NextRequest {
 }
 
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
   const methods = [
     'select', 'insert', 'update', 'delete', 'upsert',
     'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike',
@@ -79,7 +80,7 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 
@@ -123,12 +124,12 @@ describe('GET /api/routines/:id/instances', () => {
     expect(body).toHaveLength(3)
 
     // Existing instance retains its status
-    const existing = body.find((i: any) => i.id === 'inst-1')
+    const existing = body.find((i: { id: string | null }) => i.id === 'inst-1')
     expect(existing).toBeDefined()
     expect(existing.status).toBe('completed')
 
     // Generated instances have pending status and null id
-    const generated = body.filter((i: any) => i.id === null)
+    const generated = body.filter((i: { id: string | null }) => i.id === null)
     expect(generated).toHaveLength(2)
     expect(generated[0].status).toBe('pending')
   })
@@ -144,7 +145,7 @@ describe('GET /api/routines/:id/instances', () => {
     const { RRule } = await import('rrule')
     vi.mocked(RRule.fromString).mockReturnValueOnce({
       between: vi.fn().mockReturnValue([]),
-    } as any)
+    } as unknown as InstanceType<typeof RRule>)
 
     mockAuthWithTables({
       routines: { data: routine, error: null },

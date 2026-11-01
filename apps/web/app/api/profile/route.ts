@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const { userId, supabase } = auth
 
-  let { data: profile, error } = await supabase
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', userId)
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     delete safeSettings.telegram_bot_token
     delete safeSettings.telegram_chat_id
     safeSettings.telegram_configured = hasTelegramToken && hasTelegramChat
-    profile = { ...profile, settings: safeSettings }
+    return NextResponse.json({ ...profile, settings: safeSettings })
   }
 
   return NextResponse.json(profile)
@@ -65,7 +65,7 @@ export async function PATCH(request: NextRequest) {
     )
   }
 
-  const updates: Record<string, any> = {}
+  const updates: Record<string, unknown> = {}
 
   if (parsed.data.display_name !== undefined) updates.display_name = parsed.data.display_name
   if (parsed.data.company !== undefined) updates.company = parsed.data.company

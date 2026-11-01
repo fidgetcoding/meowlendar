@@ -1,13 +1,12 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import {
   format,
-  parseISO,
   addDays,
   startOfDay,
-  isSameDay,
 } from 'date-fns'
 import { Clock, Globe } from 'lucide-react'
 import { BookingCalendar } from '@/components/booking-external/BookingCalendar'
@@ -288,15 +287,21 @@ export default function BookingPage() {
         {/* Host info header */}
         <div className="mb-8 text-center">
           {hostProfile?.booking_page_logo_url ? (
-            <img
+            <Image
               src={hostProfile.booking_page_logo_url}
               alt=""
+              width={48}
+              height={48}
+              unoptimized
               className="mx-auto mb-3 h-12 w-12 rounded-full object-cover"
             />
           ) : hostProfile?.avatar_url ? (
-            <img
+            <Image
               src={hostProfile.avatar_url}
               alt=""
+              width={48}
+              height={48}
+              unoptimized
               className="mx-auto mb-3 h-12 w-12 rounded-full object-cover"
             />
           ) : null}
@@ -338,7 +343,6 @@ export default function BookingPage() {
               hostName={hostProfile?.display_name || 'Host'}
               meetingTitle={bookingLink.name}
               cancelToken={bookingResult.cancel_token}
-              bookingSlug={slug}
               timeFormat={timeFormat}
               status={bookingResult.status ?? 'confirmed'}
             />

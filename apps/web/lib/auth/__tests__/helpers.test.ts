@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
+import type { AuthResult } from '../helpers'
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -34,10 +35,10 @@ describe('auth helpers', () => {
   let authenticate: typeof import('../helpers').authenticate
   let isAuthError: typeof import('../helpers').isAuthError
   let validationError: typeof import('../helpers').validationError
-  let authenticateApiKey: any
-  let mintUserJwt: any
-  let createUserScopedClient: any
-  let rateLimitAsync: any
+  let authenticateApiKey: Mock
+  let mintUserJwt: Mock
+  let createUserScopedClient: Mock
+  let rateLimitAsync: Mock
 
   beforeEach(async () => {
     vi.resetModules()
@@ -53,29 +54,29 @@ describe('auth helpers', () => {
     isAuthError = helpers.isAuthError
     validationError = helpers.validationError
 
-    authenticateApiKey = (await import('../api-key')).authenticateApiKey
+    authenticateApiKey = (await import('../api-key')).authenticateApiKey as unknown as Mock
     const userJwt = await import('../user-jwt')
-    mintUserJwt = userJwt.mintUserJwt
-    createUserScopedClient = userJwt.createUserScopedClient
-    rateLimitAsync = (await import('../../rate-limit')).rateLimitAsync
+    mintUserJwt = userJwt.mintUserJwt as unknown as Mock
+    createUserScopedClient = userJwt.createUserScopedClient as unknown as Mock
+    rateLimitAsync = (await import('../../rate-limit')).rateLimitAsync as unknown as Mock
 
     // Re-establish default resolved values after resetAllMocks.
-    ;(mintUserJwt as any).mockResolvedValue('fake.jwt.token')
-    ;(createUserScopedClient as any).mockReturnValue(mockScopedClient)
-    ;(rateLimitAsync as any).mockResolvedValue(true)
+    mintUserJwt.mockResolvedValue('fake.jwt.token')
+    createUserScopedClient.mockReturnValue(mockScopedClient)
+    rateLimitAsync.mockResolvedValue(true)
   })
 
   // ── authenticate() — API key path ───────────────────────────────────────────
 
   describe('authenticate() API-key path', () => {
     it('mints a user-scoped JWT client (never the service role) for a valid key', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue({ userId: 'user-from-apikey', keyId: 'key-1' })
+      authenticateApiKey.mockResolvedValue({ userId: 'user-from-apikey', keyId: 'key-1' })
 
       const request = new NextRequest('https://app.poolendar.com/api/events')
       const result = await authenticate(request)
 
       expect(result).not.toBeInstanceOf(NextResponse)
-      const authResult = result as { userId: string; supabase: any }
+      const authResult = result as AuthResult
       expect(authResult.userId).toBe('user-from-apikey')
       // Client came from the user-scoped JWT path, not a service-role client.
       expect(mintUserJwt).toHaveBeenCalledWith('user-from-apikey')
@@ -84,7 +85,7 @@ describe('auth helpers', () => {
     })
 
     it('classifies GET as a read (1000/min) and POST as a write (100/min)', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue({ userId: 'u1', keyId: 'key-9' })
+      authenticateApiKey.mockResolvedValue({ userId: 'u1', keyId: 'key-9' })
 
       await authenticate(new NextRequest('https://app.poolendar.com/api/events', { method: 'GET' }))
       expect(rateLimitAsync).toHaveBeenCalledWith('apikey:read:key-9', 1000, 60_000)
@@ -94,8 +95,8 @@ describe('auth helpers', () => {
     })
 
     it('returns 429 with Retry-After when the key is over its budget', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue({ userId: 'u1', keyId: 'key-2' })
-      ;(rateLimitAsync as any).mockResolvedValue(false)
+      authenticateApiKey.mockResolvedValue({ userId: 'u1', keyId: 'key-2' })
+      rateLimitAsync.mockResolvedValue(false)
 
       const request = new NextRequest('https://app.poolendar.com/api/events', { method: 'POST' })
       const result = await authenticate(request)
@@ -114,7 +115,7 @@ describe('auth helpers', () => {
 
   describe('authenticate() session path', () => {
     it('returns userId + supabase client for valid session', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue(null)
+      authenticateApiKey.mockResolvedValue(null)
       mockGetUser.mockResolvedValue({
         data: { user: { id: 'session-user-id' } },
         error: null,
@@ -124,14 +125,14 @@ describe('auth helpers', () => {
       const result = await authenticate(request)
 
       expect(result).not.toBeInstanceOf(NextResponse)
-      const authResult = result as { userId: string; supabase: any }
+      const authResult = result as AuthResult
       expect(authResult.userId).toBe('session-user-id')
       // Session callers are never rate-limited.
       expect(rateLimitAsync).not.toHaveBeenCalled()
     })
 
     it('returns 401 NextResponse when neither API key nor session is valid', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue(null)
+      authenticateApiKey.mockResolvedValue(null)
       mockGetUser.mockResolvedValue({
         data: { user: null },
         error: { message: 'Not authenticated' },
@@ -149,7 +150,7 @@ describe('auth helpers', () => {
     })
 
     it('tries API key auth before session auth', async () => {
-      ;(authenticateApiKey as any).mockResolvedValue({ userId: 'api-key-user', keyId: 'key-3' })
+      authenticateApiKey.mockResolvedValue({ userId: 'api-key-user', keyId: 'key-3' })
 
       const request = new NextRequest('https://app.poolendar.com/api/events')
       await authenticate(request)
@@ -168,7 +169,7 @@ describe('auth helpers', () => {
     })
 
     it('returns false for AuthResult object', () => {
-      const authResult = { userId: 'abc', supabase: {} as any }
+      const authResult = { userId: 'abc', supabase: {} as AuthResult['supabase'] }
       expect(isAuthError(authResult)).toBe(false)
     })
   })

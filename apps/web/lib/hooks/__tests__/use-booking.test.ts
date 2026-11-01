@@ -6,6 +6,7 @@ import {
   resetSupabaseMocks,
 } from './mock-supabase'
 import { createTestQueryClient } from './test-utils'
+import { omit } from '@/lib/omit'
 import {
   useBookingLinks,
   useCreateBookingLink,
@@ -130,8 +131,7 @@ describe('useCreateBookingLink', () => {
     const { result } = renderHook(() => useCreateBookingLink(), { wrapper })
 
     await act(async () => {
-      const { id, user_id, created_at, updated_at, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(omit(created, ['id', 'user_id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -150,8 +150,7 @@ describe('useCreateBookingLink', () => {
     const { result } = renderHook(() => useCreateBookingLink(), { wrapper })
 
     await act(async () => {
-      const { id, user_id, created_at, updated_at, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(omit(created, ['id', 'user_id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -174,8 +173,7 @@ describe('useCreateBookingLink', () => {
     const { result } = renderHook(() => useCreateBookingLink(), { wrapper })
 
     await act(async () => {
-      const { id, user_id, created_at, updated_at, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(omit(created, ['id', 'user_id', 'created_at', 'updated_at']))
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

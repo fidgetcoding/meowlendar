@@ -9,6 +9,22 @@ import {
   deleteGoogleEvent,
 } from './calendar'
 import { requireEnv } from '../env'
+import type {
+  GoogleEvent,
+  GoogleEventAttendee,
+  GoogleEventInsert,
+  GoogleEventWrite,
+} from './types'
+
+/** Calendar events carry retry bookkeeping columns that are not on CalendarEvent. */
+type PendingPushEvent = CalendarEvent & { retry_count: number | null }
+
+/** Google failures surface as thrown errors whose message includes the HTTP status. */
+function errorMessageIncludes(err: unknown, text: string): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const { message } = err as { message?: unknown }
+  return typeof message === 'string' && message.includes(text)
+}
 
 function getServiceClient() {
   return createServerClient(
@@ -29,7 +45,7 @@ function getServiceClient() {
  * Map a Google Calendar API event to our local events table schema.
  */
 export function mapGoogleEventToLocal(
-  googleEvent: any,
+  googleEvent: GoogleEvent,
   calendarId: string,
   userId: string
 ): Partial<CalendarEvent> {
@@ -37,13 +53,13 @@ export function mapGoogleEventToLocal(
 
   // For all-day events, store the bare date without UTC conversion
   const startTime = isAllDay
-    ? `${googleEvent.start.date}T00:00:00`  // Local midnight, no TZ shift
+    ? `${googleEvent.start!.date}T00:00:00`  // Local midnight, no TZ shift
     : googleEvent.start?.dateTime
       ? new Date(googleEvent.start.dateTime).toISOString()
       : new Date().toISOString()
 
   const endTime = isAllDay
-    ? `${googleEvent.end.date}T00:00:00`
+    ? `${googleEvent.end!.date}T00:00:00`
     : googleEvent.end?.dateTime
       ? new Date(googleEvent.end.dateTime).toISOString()
       : new Date().toISOString()
@@ -55,14 +71,14 @@ export function mapGoogleEventToLocal(
 
   const attendees: CalendarEvent['attendees'] = (
     googleEvent.attendees ?? []
-  ).map((a: any) => ({
+  ).map((a: GoogleEventAttendee) => ({
     email: a.email,
     name: a.displayName ?? undefined,
     response_status: a.responseStatus ?? 'needsAction',
   }))
 
   const reminders: CalendarEvent['reminders'] =
-    googleEvent.reminders?.overrides?.map((r: any) => ({
+    googleEvent.reminders?.overrides?.map((r) => ({
       minutes_before: r.minutes,
     })) ?? []
 
@@ -81,7 +97,7 @@ export function mapGoogleEventToLocal(
   let conferencingUrl: string | null = null
   if (googleEvent.conferenceData?.entryPoints) {
     const videoEntry = googleEvent.conferenceData.entryPoints.find(
-      (ep: any) => ep.entryPointType === 'video'
+      (ep) => ep.entryPointType === 'video'
     )
     conferencingUrl = videoEntry?.uri ?? null
   }
@@ -92,10 +108,10 @@ export function mapGoogleEventToLocal(
   // Extract recurrence rule (first RRULE line if present)
   let recurrenceRule: string | null = null
   if (googleEvent.recurrence?.length) {
-    const rruleLine = googleEvent.recurrence.find((r: string) =>
+    const rruleLine = googleEvent.recurrence.find((r) =>
       r.startsWith('RRULE:')
     )
-    recurrenceRule = rruleLine ?? googleEvent.recurrence[0]
+    recurrenceRule = rruleLine ?? googleEvent.recurrence[0]!
   }
 
   // Map Google event status
@@ -131,7 +147,7 @@ export function mapGoogleEventToLocal(
 /**
  * Map our local event to Google Calendar API format.
  */
-export function mapLocalEventToGoogle(event: CalendarEvent): any {
+export function mapLocalEventToGoogle(event: CalendarEvent): GoogleEventInsert {
   const isAllDay = event.is_all_day
 
   const start = isAllDay
@@ -142,7 +158,7 @@ export function mapLocalEventToGoogle(event: CalendarEvent): any {
     ? { date: event.end_time.slice(0, 10), timeZone: event.timezone }
     : { dateTime: event.end_time, timeZone: event.timezone }
 
-  const googleEvent: any = {
+  const googleEvent: GoogleEventInsert = {
     summary: event.title,
     start,
     end,
@@ -355,9 +371,9 @@ async function syncCalendar(
         syncToken: currentSyncToken!,
         pageToken,
       })
-    } catch (err: any) {
+    } catch (err) {
       // 410 Gone — syncToken expired, fall back to full sync
-      if (err.message?.includes('410')) {
+      if (errorMessageIncludes(err, '410')) {
         needsFullSync = true
         currentSyncToken = null
         const now = new Date()
@@ -379,7 +395,7 @@ async function syncCalendar(
 
   do {
     const page = await fetchPage()
-    const events: any[] = page.items ?? []
+    const events = page.items ?? []
 
     for (const googleEvent of events) {
       // Skip cancelled events in full sync — they're just noise
@@ -419,7 +435,7 @@ async function syncCalendar(
  */
 async function upsertEvent(
   supabase: ReturnType<typeof getServiceClient>,
-  googleEvent: any,
+  googleEvent: GoogleEvent,
   calendarId: string,
   userId: string
 ): Promise<'created' | 'updated' | 'deleted'> {
@@ -481,7 +497,7 @@ export async function pushEvent(
   const supabase = getServiceClient()
   const googlePayload = mapLocalEventToGoogle(event)
 
-  let googleResponse: any
+  let googleResponse: GoogleEvent
 
   if (event.google_event_id) {
     // Update existing Google event
@@ -493,8 +509,9 @@ export async function pushEvent(
         googlePayload,
         event.etag
       )
-    } catch (err: any) {
-      if (err.status === 412 || err.message?.includes('412')) {
+    } catch (err) {
+      const status = (err as { status?: unknown } | null)?.status
+      if (status === 412 || errorMessageIncludes(err, '412')) {
         // ETag conflict — fetch latest from Google, merge, re-push
         googleResponse = await resolveConflict(
           calendar.google_account_id,
@@ -528,7 +545,7 @@ export async function pushEvent(
   // If Google assigned a conferencing URL, capture it
   if (googleResponse.conferenceData?.entryPoints) {
     const videoEntry = googleResponse.conferenceData.entryPoints.find(
-      (ep: any) => ep.entryPointType === 'video'
+      (ep) => ep.entryPointType === 'video'
     )
     if (videoEntry?.uri) {
       updatedFields.conferencing_url = videoEntry.uri
@@ -559,9 +576,9 @@ async function updateGoogleEventWithEtag(
   accountId: string,
   calendarId: string,
   googleEventId: string,
-  payload: any,
+  payload: GoogleEventWrite,
   etag: string | null
-): Promise<any> {
+): Promise<GoogleEvent> {
   const accessToken = await getGoogleAccessToken(accountId)
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
@@ -583,11 +600,10 @@ async function updateGoogleEventWithEtag(
 
   if (!response.ok) {
     const body = await response.text()
-    const err = new Error(
-      `Google Calendar update failed: ${response.status} ${body}`
-    ) as any
-    err.status = response.status
-    throw err
+    throw Object.assign(
+      new Error(`Google Calendar update failed: ${response.status} ${body}`),
+      { status: response.status }
+    )
   }
 
   return response.json()
@@ -603,8 +619,8 @@ async function resolveConflict(
   calendarId: string,
   googleEventId: string,
   localEvent: CalendarEvent,
-  localPayload: any
-): Promise<any> {
+  localPayload: GoogleEventWrite
+): Promise<GoogleEvent> {
   // Fetch the latest version from Google
   const accessToken = await getGoogleAccessToken(accountId)
   const latest = await googleCalendarRequest(
@@ -613,7 +629,7 @@ async function resolveConflict(
   )
 
   // Merge: our local payload takes precedence (last-write-wins)
-  const merged = { ...latest, ...localPayload }
+  const merged: Partial<GoogleEvent> = { ...latest, ...localPayload }
 
   // Remove read-only fields that can't be sent back
   delete merged.kind
@@ -686,7 +702,7 @@ export async function retryPendingPushEvents(): Promise<{
   let failed = 0
   let gaveUp = 0
 
-  for (const event of (events ?? []) as CalendarEvent[]) {
+  for (const event of (events ?? []) as PendingPushEvent[]) {
     retried++
 
     const { data: calendar } = await supabase
@@ -709,7 +725,7 @@ export async function retryPendingPushEvents(): Promise<{
       await pushEvent(event, calendar as Calendar)
       succeeded++
     } catch {
-      const retryCount = ((event as any).retry_count ?? 0) + 1
+      const retryCount = (event.retry_count ?? 0) + 1
       const delayMinutes = Math.min(2 ** retryCount, 60)
       const nextRetryAt = new Date(
         Date.now() + delayMinutes * 60_000

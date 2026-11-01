@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // status is optional now: a board-only or position-only move leaves the
   // column (and its completed_at bookkeeping) untouched.
-  const updateFields: Record<string, any> = {}
+  const updateFields: Record<string, unknown> = {}
 
   if (status !== undefined) {
     updateFields.status = status

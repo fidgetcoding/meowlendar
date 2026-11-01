@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 import { GET, POST } from '../route'
 
@@ -23,6 +23,7 @@ vi.mock('@/lib/auth/helpers', () => ({
 }))
 
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ function createRequest(method: string, url: string, body?: unknown): NextRequest
 }
 
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
   const methods = [
     'select', 'insert', 'update', 'delete', 'upsert',
     'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike',
@@ -57,6 +58,8 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   }
   return builder
 }
+
+type SupabaseMockWithRpc = ReturnType<typeof mockAuthWithTables> & { rpc?: Mock }
 
 function mockAuthWithTables(
   tableResults: Record<string, { data: unknown; error: unknown } | { data: unknown; error: unknown }[]>
@@ -76,7 +79,7 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 
@@ -185,7 +188,7 @@ describe('POST /api/tasks', () => {
 
     // The task + tags + subtasks are written atomically by the
     // create_task_with_children RPC, which returns the assembled task.
-    const supabase = mockAuthWithTables({}) as any
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({})
     supabase.rpc = vi
       .fn()
       .mockResolvedValue({ data: { ...createdTask, tags: [], subtasks: [] }, error: null })
@@ -213,7 +216,7 @@ describe('POST /api/tasks', () => {
       user_id: TEST_USER_ID,
     }
 
-    const supabase = mockAuthWithTables({}) as any
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({})
     supabase.rpc = vi
       .fn()
       .mockResolvedValue({ data: { ...createdTask, tags: [], subtasks: [] }, error: null })
@@ -256,9 +259,9 @@ describe('POST /api/tasks', () => {
 
     // `.from('tags')` still runs the cross-tenant ownership pre-check; the RPC
     // then does the atomic insert and returns the assembled task with tags + subtasks.
-    const supabase = mockAuthWithTables({
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({
       tags: { data: [{ id: TEST_TAG_ID }], error: null }, // ownership check: tag belongs to caller
-    }) as any
+    })
     supabase.rpc = vi.fn().mockResolvedValue({
       data: {
         ...createdTask,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../lib/auth/helpers'
+import { omit } from '../../../lib/omit'
 import { z } from 'zod'
 
 const undoSchema = z.object({
@@ -8,6 +9,17 @@ const undoSchema = z.object({
   entity_id: z.string().uuid(),
   previous_state: z.record(z.string(), z.any()).nullable(),
 })
+
+// Fields a client must never restore: they could hijack ownership or bypass constraints.
+const PROTECTED_FIELDS = [
+  'id',
+  'user_id',
+  'created_at',
+  'updated_at',
+  'etag',
+  'sync_status',
+  'google_event_id',
+] as const
 
 const tableMap: Record<string, string> = {
   event: 'events',
@@ -68,16 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Strip dangerous fields that could be used to hijack ownership or bypass constraints
-    const {
-      id: _id,
-      user_id: _uid,
-      created_at: _ca,
-      updated_at: _ua,
-      etag: _etag,
-      sync_status: _ss,
-      google_event_id: _gei,
-      ...safeState
-    } = previous_state
+    const safeState = omit(previous_state, PROTECTED_FIELDS)
 
     const { data, error } = await supabase
       .from(table)
@@ -99,16 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Strip dangerous fields that could be used to hijack ownership or bypass constraints
-    const {
-      id: _id,
-      user_id: _uid,
-      created_at: _ca,
-      updated_at: _ua,
-      etag: _etag,
-      sync_status: _ss,
-      google_event_id: _gei,
-      ...restoreFields
-    } = previous_state
+    const restoreFields = omit(previous_state, PROTECTED_FIELDS)
 
     const { data, error } = await supabase
       .from(table)

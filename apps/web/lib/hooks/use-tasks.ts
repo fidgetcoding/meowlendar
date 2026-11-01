@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Task, TaskStatus, TaskBoard, Tag } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
+import { omit } from '@/lib/omit'
 import { subtaskKeys } from './use-subtasks'
 
 // ---------------------------------------------------------------------------
@@ -220,7 +221,7 @@ export function useCreateTask() {
       })
 
       const tempId = crypto.randomUUID()
-      const { tag_ids: _tag_ids, ...taskData } = input
+      const taskData = omit(input, ['tag_ids'])
       const optimistic: Task = {
         ...taskData,
         // The caller may not have the owner id yet (mutationFn resolves it from
@@ -333,7 +334,7 @@ export function useUpdateTask() {
         taskKeys.detail(id),
       )
 
-      const { tag_ids: _tag_ids, ...taskData } = data
+      const taskData = omit(data, ['tag_ids'])
 
       queryClient.setQueriesData<Task[]>(
         { queryKey: taskKeys.lists() },

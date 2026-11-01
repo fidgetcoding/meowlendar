@@ -3,10 +3,10 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import {
   mockSupabaseResult,
   mockSupabaseError,
-  mockSupabaseClient,
   resetSupabaseMocks,
 } from './mock-supabase'
 import { createTestQueryClient } from './test-utils'
+import { omit } from '@/lib/omit'
 import {
   useTasks,
   useTask,
@@ -206,8 +206,9 @@ describe('useCreateTask', () => {
     const { result } = renderHook(() => useCreateTask(), { wrapper })
 
     await act(async () => {
-      const { id, created_at, updated_at, subtasks, tags, children, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(
+        omit(created, ['id', 'created_at', 'updated_at', 'subtasks', 'tags', 'children'])
+      )
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -226,8 +227,9 @@ describe('useCreateTask', () => {
     const { result } = renderHook(() => useCreateTask(), { wrapper })
 
     await act(async () => {
-      const { id, created_at, updated_at, subtasks, tags, children, ...input } = created
-      result.current.mutate(input as any)
+      result.current.mutate(
+        omit(created, ['id', 'created_at', 'updated_at', 'subtasks', 'tags', 'children'])
+      )
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

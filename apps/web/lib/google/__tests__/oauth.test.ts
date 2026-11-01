@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
@@ -25,12 +25,11 @@ vi.mock('@supabase/ssr', () => ({
 describe('Google OAuth', () => {
   let getGoogleOAuthUrl: typeof import('../oauth').getGoogleOAuthUrl
   let exchangeCodeForTokens: typeof import('../oauth').exchangeCodeForTokens
-  let disconnectGoogleAccount: typeof import('../oauth').disconnectGoogleAccount
 
   beforeEach(async () => {
     vi.resetModules()
     vi.resetAllMocks()
-    ;(globalThis.fetch as any).mockReset()
+    ;(globalThis.fetch as Mock).mockReset()
 
     process.env.GOOGLE_CLIENT_ID = 'test-client-id'
     process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret'
@@ -41,7 +40,6 @@ describe('Google OAuth', () => {
     const mod = await import('../oauth')
     getGoogleOAuthUrl = mod.getGoogleOAuthUrl
     exchangeCodeForTokens = mod.exchangeCodeForTokens
-    disconnectGoogleAccount = mod.disconnectGoogleAccount
   })
 
   // ── getGoogleOAuthUrl ───────────────────────────────────────────────────
@@ -77,7 +75,7 @@ describe('Google OAuth', () => {
 
   describe('exchangeCodeForTokens()', () => {
     it('exchanges auth code for tokens and fetches user email', async () => {
-      ;(globalThis.fetch as any)
+      ;(globalThis.fetch as Mock)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
@@ -104,7 +102,7 @@ describe('Google OAuth', () => {
       })
 
       // Verify the token exchange request
-      const tokenCall = (globalThis.fetch as any).mock.calls[0]
+      const tokenCall = (globalThis.fetch as Mock).mock.calls[0]!
       expect(tokenCall[0]).toBe('https://oauth2.googleapis.com/token')
       const body = new URLSearchParams(tokenCall[1].body)
       expect(body.get('code')).toBe('auth-code-xyz')
@@ -114,7 +112,7 @@ describe('Google OAuth', () => {
     })
 
     it('throws when token exchange HTTP response is not ok', async () => {
-      ;(globalThis.fetch as any).mockResolvedValueOnce({
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({
         ok: false,
         status: 400,
         text: async () => 'invalid_grant',
@@ -126,7 +124,7 @@ describe('Google OAuth', () => {
     })
 
     it('returns an undefined refresh_token when Google omits it (re-consent)', async () => {
-      ;(globalThis.fetch as any)
+      ;(globalThis.fetch as Mock)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
@@ -149,7 +147,7 @@ describe('Google OAuth', () => {
     })
 
     it('throws when userinfo fetch fails', async () => {
-      ;(globalThis.fetch as any)
+      ;(globalThis.fetch as Mock)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
@@ -194,16 +192,16 @@ describe('Google OAuth', () => {
       // Re-import with fresh mock
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue(mockSelectChain),
       })
-      ;(globalThis.fetch as any).mockResolvedValueOnce({ ok: true })
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: true })
 
       const mod = await import('../oauth')
       await mod.disconnectGoogleAccount('acct-1')
 
       // Verify revocation was attempted with the refresh_token
-      const revokeCall = (globalThis.fetch as any).mock.calls[0]
+      const revokeCall = (globalThis.fetch as Mock).mock.calls[0]!
       expect(revokeCall[0]).toContain('oauth2.googleapis.com/revoke')
       expect(revokeCall[0]).toContain('rt_456')
     })
@@ -227,12 +225,12 @@ describe('Google OAuth', () => {
 
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue(mockSelectChain),
       })
 
       // Revocation throws
-      ;(globalThis.fetch as any).mockRejectedValueOnce(new Error('network fail'))
+      ;(globalThis.fetch as Mock).mockRejectedValueOnce(new Error('network fail'))
 
       const mod = await import('../oauth')
       // Should NOT throw — revocation failure is non-fatal
@@ -257,10 +255,10 @@ describe('Google OAuth', () => {
 
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockReturnValue(mockSelectChain),
       })
-      ;(globalThis.fetch as any).mockResolvedValueOnce({ ok: true })
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: true })
 
       const mod = await import('../oauth')
       await expect(mod.disconnectGoogleAccount('acct-1')).rejects.toThrow(
@@ -303,13 +301,13 @@ describe('Google OAuth', () => {
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
       const ga = makeGoogleAccountsChain({})
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockImplementation((table: string) =>
           table === 'google_accounts' ? ga : {}
         ),
       })
       // Calendar-list fetch fails → the calendars upsert loop is skipped.
-      ;(globalThis.fetch as any).mockResolvedValueOnce({ ok: false, status: 500 })
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: false, status: 500 })
 
       const mod = await import('../oauth')
       const { isEncrypted, decryptToken } = await import('../../crypto')
@@ -338,12 +336,12 @@ describe('Google OAuth', () => {
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
       const ga = makeGoogleAccountsChain({ existingRefresh: 'v1:EXISTING_CIPHERTEXT' })
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockImplementation((table: string) =>
           table === 'google_accounts' ? ga : {}
         ),
       })
-      ;(globalThis.fetch as any).mockResolvedValueOnce({ ok: false, status: 500 })
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: false, status: 500 })
 
       const mod = await import('../oauth')
       const { isEncrypted, decryptToken } = await import('../../crypto')
@@ -367,7 +365,7 @@ describe('Google OAuth', () => {
       vi.resetModules()
       const { createServerClient } = await import('@supabase/ssr')
       const ga = makeGoogleAccountsChain({}) // maybeSingle → null
-      ;(createServerClient as any).mockReturnValue({
+      ;(createServerClient as unknown as Mock).mockReturnValue({
         from: vi.fn().mockImplementation((table: string) =>
           table === 'google_accounts' ? ga : {}
         ),

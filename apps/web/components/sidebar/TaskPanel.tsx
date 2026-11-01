@@ -266,7 +266,10 @@ export function TaskPanel({
   const [searchQuery, setSearchQuery] = React.useState('')
   const [filter, setFilter] = React.useState<TaskViewFilter>(EMPTY_VIEW_FILTER)
 
-  const tasks = tasksProp ?? fetchedTasks ?? []
+  const tasks = React.useMemo(
+    () => tasksProp ?? fetchedTasks ?? [],
+    [tasksProp, fetchedTasks]
+  )
 
   const handleTaskClick = React.useCallback(
     (id: string) => {

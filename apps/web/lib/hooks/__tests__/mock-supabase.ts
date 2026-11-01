@@ -59,9 +59,12 @@ function dequeueResult(): MockResult {
   return { ...stickyResult }
 }
 
-function createQueryBuilder(): any {
-  const builder: any = new Proxy(
-    {},
+/** Every property is a chainable method; awaiting the builder yields a MockResult. */
+type MockQueryBuilder = PromiseLike<MockResult> & Record<string, unknown>
+
+function createQueryBuilder(): MockQueryBuilder {
+  const builder: MockQueryBuilder = new Proxy(
+    {} as MockQueryBuilder,
     {
       get(_target, prop) {
         // Make the builder thenable so `await supabase.from(...).select(...)` works

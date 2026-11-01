@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../../lib/auth/helpers'
 import { updateGoogleEvent, deleteGoogleEvent } from '../../../../lib/google/calendar'
+import type { GoogleEventWrite } from '../../../../lib/google/types'
+import { omit } from '../../../../lib/omit'
 import { updateEventSchema } from '@poolendar/validators'
 
 interface RouteParams {
@@ -70,13 +72,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Extract recurrence scope (not a DB column)
+  // Build the update object, omitting non-DB fields. The recurrence scope is
+  // accepted but not applied yet.
   // TODO: implement occurrence-level edits when recurrence_id splitting is built
-  const { scope: _recurrenceScope, scope_dates: _scopeDates } = input
-
-  // Build the update object, omitting non-DB fields
-  const { conferencing, scope, scope_dates, ...dbFields } = input
-  const updateFields: Record<string, any> = {}
+  const dbFields = omit(input, ['conferencing', 'scope', 'scope_dates'])
+  const updateFields: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(dbFields)) {
     if (value !== undefined) {
@@ -106,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (existing.google_event_id) {
     try {
       const calendar = existing.calendars
-      const googlePatch: Record<string, any> = {}
+      const googlePatch: GoogleEventWrite = {}
 
       if (input.title !== undefined) {
         googlePatch.summary = input.title
@@ -206,17 +206,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { userId, supabase } = auth
   const { id } = await params
 
-  // Extract optional recurrence scope from request body
+  // A request body's recurrence scope is ignored for now: DELETE always removes
+  // the whole event.
   // TODO: implement occurrence-level deletes when recurrence_id splitting is built
-  let _deleteScope: string | undefined
-  let _deleteScopeDates: string[] | undefined
-  try {
-    const body = await request.json()
-    _deleteScope = body?.scope
-    _deleteScopeDates = body?.scope_dates
-  } catch {
-    // DELETE with no body is fine — defaults to deleting the whole event
-  }
 
   // Fetch the event to verify ownership and get Google IDs
   const { data: event, error: fetchError } = await supabase

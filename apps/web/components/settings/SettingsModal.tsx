@@ -29,6 +29,7 @@ import { VideoConferencingTab } from './VideoConferencingTab'
 import { TelegramTab } from './TelegramTab'
 import { CalendarsTab } from './CalendarsTab'
 import { createClient } from '@/lib/supabase/client'
+import { omit } from '@/lib/omit'
 import { toast } from 'sonner'
 import type {
   Profile,
@@ -171,7 +172,6 @@ export function SettingsModal({
       setActiveTab(initialTab)
       setMobileNavOpen(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTab])
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
@@ -185,6 +185,14 @@ export function SettingsModal({
   const [username, setUsername] = useState('')
   const [company, setCompany] = useState('')
 
+  const loadApiKeys = useCallback(async () => {
+    const { data } = await supabase
+      .from('api_keys')
+      .select('id, user_id, name, key_prefix, last_used_at, created_at')
+      .order('created_at', { ascending: false })
+    if (data) setApiKeys(data)
+  }, [supabase])
+
   // Load settings when modal opens
   useEffect(() => {
     if (!open || !profile) return
@@ -196,15 +204,7 @@ export function SettingsModal({
 
     loadApiKeys()
     loadCalendars()
-  }, [open, profile])
-
-  async function loadApiKeys() {
-    const { data } = await supabase
-      .from('api_keys')
-      .select('id, user_id, name, key_prefix, last_used_at, created_at')
-      .order('created_at', { ascending: false })
-    if (data) setApiKeys(data)
-  }
+  }, [open, profile, loadApiKeys])
 
   async function loadCalendars() {
     try {
@@ -214,7 +214,7 @@ export function SettingsModal({
         accounts: (GoogleAccount & { calendars: CalendarType[] })[]
       }
       setGoogleAccounts(
-        accounts.map(({ calendars: _calendars, ...account }) => account)
+        accounts.map((account) => omit(account, ['calendars']))
       )
       setCalendars(accounts.flatMap((a) => a.calendars ?? []))
     } catch {

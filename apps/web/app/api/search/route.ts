@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../lib/auth/helpers'
 import { paginate } from '../../../lib/pagination'
 
+type TaskTagRef = { task_id: string }
+
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
   if (isAuthError(auth)) return auth
@@ -125,7 +127,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', userId)
         .then(async ({ data: tagMatches }) => {
           const tagTaskIds = tagMatches?.flatMap((t) =>
-            ((t.task_tags as any[]) ?? []).map((tt: any) => tt.task_id)
+            ((t.task_tags as TaskTagRef[] | null) ?? []).map((tt) => tt.task_id)
           ) ?? []
           if (tagTaskIds.length === 0) return
 
@@ -138,7 +140,7 @@ export async function GET(request: NextRequest) {
 
           for (const t of tagTasks ?? []) {
             const matchedTagName = tagMatches?.find((tag) =>
-              ((tag.task_tags as any[]) ?? []).some((tt: any) => tt.task_id === t.id)
+              ((tag.task_tags as TaskTagRef[] | null) ?? []).some((tt) => tt.task_id === t.id)
             )?.name
             pushUnique({
               type: 'task',

@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr'
-import type { GoogleAccount } from '@poolendar/types'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
 

@@ -168,6 +168,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   )
 
   const calendarStore = useCalendarStore()
+  const setAllCalendarsVisible = useCalendarStore((s) => s.setAllCalendarsVisible)
   const activePanel = useUIStore((s) => s.activePanel)
   const taskPanelViewMode = useUIStore((s) => s.taskPanelViewMode)
   const setActivePanel = useUIStore((s) => s.setActivePanel)
@@ -201,10 +202,9 @@ function AppChrome({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (calendars.length > 0) {
-      calendarStore.setAllCalendarsVisible(calendars.map((c) => c.id))
+      setAllCalendarsVisible(calendars.map((c) => c.id))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendars])
+  }, [calendars, setAllCalendarsVisible])
 
   const accentColor = profileData?.settings?.theme_accent_color ?? profile?.settings?.theme_accent_color
   useEffect(() => {

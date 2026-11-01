@@ -1,3 +1,4 @@
+import type { Table } from 'dexie'
 import { db, type MutationQueueEntry } from './db'
 import { createClient } from '../supabase/client'
 
@@ -185,11 +186,10 @@ async function syncEvents(
   }
 }
 
-async function syncFullTable(
+async function syncFullTable<T>(
   supabase: ReturnType<typeof createClient>,
   tableName: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dexieTable: any,
+  dexieTable: Table<T, string>,
   userId: string
 ): Promise<void> {
   const { data, error } = await supabase

@@ -2,7 +2,6 @@
 
 import { format, parseISO } from 'date-fns'
 import { Check, Calendar, ExternalLink } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
 
 interface BookingConfirmationProps {
   startTime: string
@@ -10,7 +9,6 @@ interface BookingConfirmationProps {
   hostName: string
   meetingTitle: string
   cancelToken: string
-  bookingSlug: string
   timeFormat: '12h' | '24h'
   status?: 'confirmed' | 'pending'
 }
@@ -21,7 +19,6 @@ export function BookingConfirmation({
   hostName,
   meetingTitle,
   cancelToken,
-  bookingSlug,
   timeFormat,
   status = 'confirmed',
 }: BookingConfirmationProps) {

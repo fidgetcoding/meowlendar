@@ -12,7 +12,8 @@ export interface CheckboxProps
 
 const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
   ({ className, label, id, checked, defaultChecked, onCheckedChange, onChange, ...props }, ref) => {
-    const checkboxId = id || React.useId()
+    const generatedId = React.useId()
+    const checkboxId = id || generatedId
     const isControlled = checked !== undefined
     const [internalChecked, setInternalChecked] = React.useState(defaultChecked ?? false)
     const isChecked = isControlled ? checked : internalChecked

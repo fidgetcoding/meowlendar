@@ -25,6 +25,7 @@ vi.mock('@/lib/google/calendar', () => ({
 
 import { PATCH, DELETE } from '../route'
 import { authenticate } from '@/lib/auth/helpers'
+import type { AuthResult } from '@/lib/auth/helpers'
 import { disconnectGoogleAccount } from '@/lib/google/oauth'
 import { updateGoogleCalendarColor } from '@/lib/google/calendar'
 
@@ -32,7 +33,7 @@ const TEST_USER_ID = '00000000-0000-4000-8000-000000000001'
 const CAL_ID = '00000000-0000-4000-8000-0000000000c1'
 
 function makeQueryBuilder(result: { data: unknown; error: unknown }) {
-  const builder: Record<string, any> = {}
+  const builder: Record<string, unknown> = {}
   const methods = ['select', 'update', 'delete', 'eq', 'order']
   for (const m of methods) builder[m] = vi.fn().mockReturnValue(builder)
   builder.single = vi.fn().mockResolvedValue(result)
@@ -63,7 +64,7 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
-  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as any })
+  vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
 

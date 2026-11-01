@@ -112,7 +112,7 @@ export function BookingCalendar({
                         : 'text-[var(--muted)] cursor-not-allowed'
               }`}
               aria-label={format(d, 'EEEE, MMMM d, yyyy')}
-              aria-selected={selected || undefined}
+              aria-pressed={Boolean(selected)}
             >
               {format(d, 'd')}
             </button>

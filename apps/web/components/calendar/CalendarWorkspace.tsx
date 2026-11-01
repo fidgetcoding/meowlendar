@@ -7,7 +7,6 @@ import type {
   Task,
   Routine,
   Calendar,
-  Tag,
 } from '@poolendar/types'
 import { useCalendarStore } from '@/lib/stores/calendar-store'
 import { useUIStore } from '@/lib/stores/ui-store'
@@ -24,7 +23,6 @@ interface CalendarWorkspaceProps {
   tasks: Task[]
   routines: Routine[]
   calendars: Calendar[]
-  tags: Tag[]
   selfEmails: string[]
   userId: string | null
   currentDate: Date
@@ -42,7 +40,6 @@ export function CalendarWorkspace({
   tasks,
   routines,
   calendars,
-  tags,
   selfEmails,
   userId,
   currentDate,

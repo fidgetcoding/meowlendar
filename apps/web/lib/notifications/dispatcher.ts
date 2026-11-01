@@ -32,7 +32,7 @@ export async function dispatchNotification(
     return []
   }
 
-  const settings = profile.settings as Record<string, any> | null
+  const settings = profile.settings as Record<string, unknown> | null
   const notifications = settings?.notifications as Record<string, NotificationChannelConfig> | undefined
   const settingsKey = EVENT_TO_SETTINGS_KEY[payload.event]
 
@@ -83,7 +83,7 @@ export async function dispatchToChannel(
     return { channel, success: false, error: 'Profile not found' }
   }
 
-  const settings = profile.settings as Record<string, any> | null
+  const settings = profile.settings as Record<string, unknown> | null
 
   switch (channel) {
     case 'browser_push':

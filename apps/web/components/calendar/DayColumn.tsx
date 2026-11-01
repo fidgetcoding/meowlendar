@@ -313,7 +313,7 @@ export const DayColumn = React.memo(function DayColumn({
 
   // ---- Drag preview calculation ----
 
-  const dragPreview = React.useMemo(() => {
+  function computeDragPreview() {
     if (!dragCreate || !isDraggingRef.current) return null
     const minY = Math.min(dragCreate.startY, dragCreate.currentY)
     const maxY = Math.max(dragCreate.startY, dragCreate.currentY)
@@ -328,8 +328,9 @@ export const DayColumn = React.memo(function DayColumn({
 
     const label = `${format(previewStart, 'h:mm a')} - ${format(previewEnd, 'h:mm a')}`
     return { top: minY, height: maxY - minY, label }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragCreate?.startY, dragCreate?.currentY])
+  }
+
+  const dragPreview = computeDragPreview()
 
   const hours: number[] = []
   for (let h = startHour; h < endHour; h++) {

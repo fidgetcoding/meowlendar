@@ -73,7 +73,7 @@ export function useUpdateProfile() {
       if (!user) throw new Error('Not authenticated')
 
       // If settings are provided, merge with existing settings
-      let updatePayload: Record<string, unknown> = {}
+      const updatePayload: Record<string, unknown> = {}
 
       if (input.display_name !== undefined) {
         updatePayload.display_name = input.display_name

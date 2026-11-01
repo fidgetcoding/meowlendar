@@ -10,7 +10,6 @@ import {
   Lock,
   Zap,
   Eye,
-  Users,
   Link2,
   Plus,
 } from 'lucide-react'

@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const tagsByTaskId: Record<string, any[]> = {}
+  const tagsByTaskId: Record<string, unknown[]> = {}
   for (const tt of taskTags ?? []) {
     if (!tagsByTaskId[tt.task_id]) {
       tagsByTaskId[tt.task_id] = []

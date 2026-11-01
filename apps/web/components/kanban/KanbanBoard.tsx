@@ -12,7 +12,6 @@ import {
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type {
@@ -43,7 +42,6 @@ interface KanbanBoardProps {
     status: TaskStatus,
     newPosition: number
   ) => void
-  onTaskUpdate: (taskId: string, updates: Partial<Task>) => void
   onTaskCreate: (data: {
     title: string
     status: TaskStatus
@@ -55,12 +53,41 @@ interface KanbanBoardProps {
   onTaskComplete: (taskId: string) => void
 }
 
+// Resolve which column a task ID belongs to
+function findColumnOfTask(
+  columns: Record<TaskStatus, Task[]>,
+  taskId: string
+): TaskStatus | null {
+  for (const status of COLUMN_ORDER) {
+    if (columns[status].some((t) => t.id === taskId)) {
+      return status
+    }
+  }
+  return null
+}
+
+// Extract the status from a droppable ID like "column-backlog" or a task ID
+function resolveDropStatus(
+  columns: Record<TaskStatus, Task[]>,
+  overId: string | number
+): TaskStatus | null {
+  const id = String(overId)
+
+  // Direct column drop zones
+  if (id.startsWith('column-')) {
+    const statusPart = id.replace('column-', '').replace('-empty', '') as TaskStatus
+    if (COLUMN_ORDER.includes(statusPart)) return statusPart
+  }
+
+  // Dropped over another task -> that task's column
+  return findColumnOfTask(columns, id)
+}
+
 export function KanbanBoard({
   tasks,
   tags,
   onTaskMove,
   onTaskReorder,
-  onTaskUpdate,
   onTaskCreate,
   onTaskClick,
   onTaskComplete,
@@ -151,32 +178,6 @@ export function KanbanBoard({
     return map
   }, [tasks])
 
-  // Resolve which column a task ID belongs to
-  function findColumnOfTask(taskId: string): TaskStatus | null {
-    for (const status of COLUMN_ORDER) {
-      if (columns[status].some((t) => t.id === taskId)) {
-        return status
-      }
-    }
-    return null
-  }
-
-  // Extract the status from a droppable ID like "column-backlog" or a task ID
-  function resolveDropStatus(
-    overId: string | number
-  ): TaskStatus | null {
-    const id = String(overId)
-
-    // Direct column drop zones
-    if (id.startsWith('column-')) {
-      const statusPart = id.replace('column-', '').replace('-empty', '') as TaskStatus
-      if (COLUMN_ORDER.includes(statusPart)) return statusPart
-    }
-
-    // Dropped over another task -> that task's column
-    return findColumnOfTask(id)
-  }
-
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const { active } = event
@@ -188,10 +189,6 @@ export function KanbanBoard({
     []
   )
 
-  const handleDragOver = useCallback((_event: DragOverEvent) => {
-    // Visual feedback is handled via useDroppable isOver in KanbanColumn
-  }, [])
-
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
@@ -202,8 +199,8 @@ export function KanbanBoard({
       const activeId = String(active.id)
       const overId = String(over.id)
 
-      const sourceStatus = findColumnOfTask(activeId)
-      const destStatus = resolveDropStatus(overId)
+      const sourceStatus = findColumnOfTask(columns, activeId)
+      const destStatus = resolveDropStatus(columns, overId)
 
       if (!sourceStatus || !destStatus) return
 
@@ -290,7 +287,6 @@ export function KanbanBoard({
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 h-full min-w-max md:min-w-0 overflow-x-auto snap-x snap-mandatory md:snap-none">

@@ -42,8 +42,9 @@ export async function sendPushNotification(
       })
     )
     return true
-  } catch (err: any) {
-    if (err.statusCode === 410 || err.statusCode === 404) {
+  } catch (err) {
+    const { statusCode, body } = err as { statusCode?: number; body?: unknown }
+    if (statusCode === 410 || statusCode === 404) {
       console.warn('[notifications/push] Subscription expired, removing:', subscription.id)
       if (supabase) {
         await supabase
@@ -52,7 +53,7 @@ export async function sendPushNotification(
           .eq('id', subscription.id)
       }
     } else {
-      console.error('[notifications/push] Send failed:', err.statusCode, err.body)
+      console.error('[notifications/push] Send failed:', statusCode, body)
     }
     return false
   }

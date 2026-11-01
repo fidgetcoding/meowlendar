@@ -295,15 +295,14 @@ export function RoutinesPanel() {
   const uiStore = useUIStore()
 
   const allRoutines = routines ?? []
-  const instances = todayInstances ?? []
 
   const instanceMap = React.useMemo(() => {
     const map: Record<string, RoutineInstance> = {}
-    for (const inst of instances) {
+    for (const inst of todayInstances ?? []) {
       map[inst.routine_id] = inst
     }
     return map
-  }, [instances])
+  }, [todayInstances])
 
   const handleComplete = React.useCallback(
     (routineId: string, date: string) => {

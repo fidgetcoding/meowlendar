@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server'
 type MockResult = { data: unknown; error: unknown; count?: number }
 
 function createChain(result: MockResult = { data: null, error: null }) {
-  const chain: Record<string, any> = {}
+  const chain: Record<string | symbol, unknown> = {}
   const methods = [
     'from', 'select', 'insert', 'update', 'delete',
     'eq', 'in', 'lt', 'gt', 'not', 'is', 'or', 'ilike',
@@ -20,7 +20,7 @@ function createChain(result: MockResult = { data: null, error: null }) {
   // Terminal — resolves to result
   chain.then = (resolve: (v: MockResult) => void) => resolve(result)
   // Allow await on the chain itself
-  ;(chain as any)[Symbol.toStringTag] = 'Promise'
+  chain[Symbol.toStringTag] = 'Promise'
   // Override single/select to also be thenable
   chain.single = vi.fn().mockReturnValue({
     ...chain,
@@ -41,7 +41,7 @@ function createSupabaseMock() {
   }
 
   function build() {
-    const mock: Record<string, any> = {
+    return {
       from: vi.fn().mockImplementation((table: string) => {
         const results = tableResults.get(table) ?? []
         const result = results.shift() ?? defaultResult
@@ -54,7 +54,6 @@ function createSupabaseMock() {
         }),
       },
     }
-    return mock
   }
 
   return { setResult, setDefault: (r: MockResult) => { defaultResult = r }, build }
@@ -67,9 +66,9 @@ function createSupabaseMock() {
 const mockAuthenticate = vi.fn()
 
 vi.mock('@/lib/auth/helpers', () => ({
-  authenticate: (...args: any[]) => mockAuthenticate(...args),
-  isAuthError: (result: any) => result instanceof Response || (result && typeof result.status === 'number' && typeof result.json === 'function'),
-  validationError: (issues: any[]) => {
+  authenticate: (...args: unknown[]) => mockAuthenticate(...args),
+  isAuthError: (result: Partial<Response>) => result instanceof Response || (result && typeof result.status === 'number' && typeof result.json === 'function'),
+  validationError: (issues: { path: (string | number)[]; message: string }[]) => {
     const details: Record<string, string[]> = {}
     for (const issue of issues) {
       const key = issue.path.join('.') || '_root'
@@ -82,10 +81,10 @@ vi.mock('@/lib/auth/helpers', () => ({
 
 // Shared service-client factory for routes that call createServerClient directly
 // (availability + book endpoints bypass authenticate and build their own client)
-let serviceClientFactory: (() => Record<string, any>) = () => ({})
+const serviceClientFactory = (): Record<string, unknown> => ({})
 
 vi.mock('@supabase/ssr', () => ({
-  createServerClient: vi.fn((..._args: any[]) => serviceClientFactory()),
+  createServerClient: vi.fn(() => serviceClientFactory()),
 }))
 
 // Both the sync (rateLimit) and async (rateLimitAsync) limiters are stubbed to

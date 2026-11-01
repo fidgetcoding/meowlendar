@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const mockGetUser = vi.fn()
 
 vi.mock('@/lib/supabase/middleware', () => ({
-  createClient: vi.fn((_request: NextRequest) => {
+  createClient: vi.fn(() => {
     // Avoid passing the request into NextResponse.next() — Next 15.5 enforces
     // that request.headers be a native Headers instance, which breaks in jsdom.
     // A plain NextResponse.next() is sufficient for testing middleware logic.

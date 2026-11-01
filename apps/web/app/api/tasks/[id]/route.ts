@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../../lib/auth/helpers'
+import { omit } from '../../../../lib/omit'
 import { updateTaskSchema } from '@poolendar/validators'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -88,7 +89,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  const { tag_ids, subtasks: _subtasks, ...fields } = parsed.data
+  const { tag_ids } = parsed.data
+  const fields = omit(parsed.data, ['tag_ids', 'subtasks'])
 
   // Cross-tenant guard: every provided tag must belong to the caller before we
   // touch task_tags. Reject up front so no task fields are mutated on a bad id.
@@ -109,7 +111,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   // Handle completed_at transitions
-  const updateFields: Record<string, any> = { ...fields }
+  const updateFields: Record<string, unknown> = { ...fields }
   if (fields.status !== undefined) {
     if (fields.status === 'done' && existing.status !== 'done') {
       updateFields.completed_at = new Date().toISOString()

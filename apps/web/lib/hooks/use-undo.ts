@@ -222,13 +222,16 @@ export function useUndo(gracePeriodMs = 30_000) {
   // -----------------------------------------------------------------------
 
   useEffect(() => {
+    // The Map is created once and only mutated in place, so this reference still
+    // holds every pending operation when the cleanup runs.
+    const pending = pendingRef.current
     return () => {
-      for (const entry of pendingRef.current.values()) {
+      for (const entry of pending.values()) {
         clearTimeout(entry.timeoutId)
         // Flush pending operations on unmount so they don't get lost
         entry.operation.execute().catch(() => {})
       }
-      pendingRef.current.clear()
+      pending.clear()
     }
   }, [])
 

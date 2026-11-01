@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
+import type { GoogleEvent, GoogleEventInsert, GoogleEventWrite, GoogleEventsPage } from './types'
 
 interface GoogleTokens {
   access_token: string
@@ -113,22 +114,9 @@ export async function googleCalendarRequest(
 export async function createGoogleEvent(
   accountId: string,
   calendarId: string,
-  event: {
-    summary: string
-    description?: string
-    start: { dateTime?: string; date?: string; timeZone: string }
-    end: { dateTime?: string; date?: string; timeZone: string }
-    location?: string
-    attendees?: { email: string }[]
-    recurrence?: string[]
-    reminders?: { useDefault: boolean; overrides?: { method: string; minutes: number }[] }
-    visibility?: string
-    transparency?: string
-    conferenceData?: any
-    colorId?: string
-  },
+  event: GoogleEventInsert,
   conferencing = false
-) {
+): Promise<GoogleEvent> {
   const accessToken = await getGoogleAccessToken(accountId)
   const params = conferencing ? '?conferenceDataVersion=1' : ''
 
@@ -155,8 +143,8 @@ export async function updateGoogleEvent(
   accountId: string,
   calendarId: string,
   googleEventId: string,
-  event: Record<string, any>
-) {
+  event: GoogleEventWrite
+): Promise<GoogleEvent> {
   const accessToken = await getGoogleAccessToken(accountId)
   return googleCalendarRequest(
     accessToken,
@@ -198,7 +186,7 @@ export async function listGoogleEvents(
     syncToken?: string
     pageToken?: string
   }
-) {
+): Promise<GoogleEventsPage> {
   const accessToken = await getGoogleAccessToken(accountId)
   const params = new URLSearchParams()
   if (options.timeMin) params.set('timeMin', options.timeMin)

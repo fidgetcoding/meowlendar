@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     .select('tag_id')
     .eq('task_id', id)
 
-  const tagIds = (taskTags ?? []).map((tt: any) => tt.tag_id)
+  const tagIds = (taskTags ?? []).map((tt: { tag_id: string }) => tt.tag_id)
   const hasSubtasks = subtasks && subtasks.length > 0
 
   if (!hasSubtasks && !chunks) {
