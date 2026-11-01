@@ -280,3 +280,97 @@ describe('DELETE /api/tasks/:id', () => {
     expect(body.error).toBe('Failed to delete task')
   })
 })
+
+// ── vault_ref and completed_at (the 2ndBrain link) ────────────────────────
+
+describe('PATCH /api/tasks/:id for the vault sync', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  /** Runs a PATCH against a task in `status` and returns what was written to the row. */
+  async function patch(status: string, body: unknown, updateError: unknown = null) {
+    const existing = { id: TEST_TASK_ID, status, user_id: TEST_USER_ID }
+    const supabase = mockAuthWithTables({
+      tasks: [
+        { data: existing, error: null },
+        { data: updateError ? null : { ...existing, vault_ref: 'work:abc' }, error: updateError },
+      ],
+      task_tags: { data: [], error: null },
+    })
+    const res = await PATCH(createRequest('PATCH', `/api/tasks/${TEST_TASK_ID}`, body), routeParams(TEST_TASK_ID))
+    const builder = supabase.from.mock.results[1]?.value as { update?: ReturnType<typeof vi.fn> } | undefined
+    return { res, written: builder?.update?.mock.calls[0]?.[0] as Record<string, unknown> | undefined }
+  }
+
+  it('sets vault_ref and returns it', async () => {
+    const { res, written } = await patch('backlog', { vault_ref: 'work:abc' })
+    expect(res.status).toBe(200)
+    expect(written).toEqual({ vault_ref: 'work:abc' })
+    expect((await res.json()).vault_ref).toBe('work:abc')
+  })
+
+  it('clears vault_ref with null', async () => {
+    const { res, written } = await patch('backlog', { vault_ref: null })
+    expect(res.status).toBe(200)
+    expect(written).toEqual({ vault_ref: null })
+  })
+
+  it.each(['has space', '../x', 'x'.repeat(129)])('rejects the vault_ref %j with 422', async (ref) => {
+    const { res, written } = await patch('backlog', { vault_ref: ref })
+    expect(res.status).toBe(422)
+    expect(written).toBeUndefined()
+  })
+
+  it('answers 409 when another task already holds the vault_ref', async () => {
+    const { res } = await patch('backlog', { vault_ref: 'work:dup' }, { code: '23505' })
+    expect(res.status).toBe(409)
+  })
+
+  it('uses a supplied completed_at when a task becomes done', async () => {
+    const { written } = await patch('backlog', { status: 'done', completed_at: '2026-04-16T12:00:00.000Z' })
+    expect(written).toEqual({ status: 'done', completed_at: '2026-04-16T12:00:00.000Z' })
+  })
+
+  it('falls back to now when a task becomes done with no date', async () => {
+    const { written } = await patch('backlog', { status: 'done' })
+    expect(typeof written?.completed_at).toBe('string')
+    expect(Date.now() - Date.parse(written?.completed_at as string)).toBeLessThan(60_000)
+  })
+
+  it('moves the date of a task that is already done', async () => {
+    const { written } = await patch('done', { completed_at: '2026-04-16T12:00:00.000Z' })
+    expect(written).toEqual({ completed_at: '2026-04-16T12:00:00.000Z' })
+  })
+
+  it('never blanks the date of a task that stays done', async () => {
+    const { written } = await patch('done', { completed_at: null, title: 'x' })
+    expect(written).toEqual({ title: 'x' })
+  })
+
+  it('leaves the date of an already done task alone when none is sent', async () => {
+    const { written } = await patch('done', { status: 'done' })
+    expect(written).toEqual({ status: 'done' })
+  })
+
+  it('ignores a completed_at on a task that is not done', async () => {
+    const { written } = await patch('backlog', { completed_at: '2026-04-16T12:00:00.000Z', title: 'x' })
+    expect(written).toEqual({ title: 'x' })
+  })
+
+  it('clears the date when a task leaves done, even if one is sent', async () => {
+    const { written } = await patch('done', { status: 'backlog', completed_at: '2026-04-16T12:00:00.000Z' })
+    expect(written).toEqual({ status: 'backlog', completed_at: null })
+  })
+
+  it('returns vault_ref on a single read', async () => {
+    mockAuthWithTables({
+      tasks: [
+        { data: { id: TEST_TASK_ID, title: 'A', vault_ref: 'work:abc' }, error: null },
+        { data: [], error: null },
+      ],
+      subtasks: { data: [], error: null },
+      task_tags: { data: [], error: null },
+    })
+    const res = await GET(createRequest('GET', `/api/tasks/${TEST_TASK_ID}`), routeParams(TEST_TASK_ID))
+    expect((await res.json()).vault_ref).toBe('work:abc')
+  })
+})

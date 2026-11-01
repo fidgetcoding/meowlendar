@@ -3,6 +3,9 @@ import { authenticate, isAuthError, validationError } from '../../../lib/auth/he
 import { createTaskSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
 
+// Postgres unique_violation. The only unique index on a task is (user_id, vault_ref).
+const UNIQUE_VIOLATION = '23505'
+
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
   if (isAuthError(auth)) return auth
@@ -158,6 +161,13 @@ export async function POST(request: NextRequest) {
     p_tag_ids: tag_ids,
     p_subtasks: subtasks ?? [],
   })
+
+  if (rpcError?.code === UNIQUE_VIOLATION) {
+    return NextResponse.json(
+      { error: 'Another task already uses this vault_ref' },
+      { status: 409 }
+    )
+  }
 
   if (rpcError || !task) {
     return NextResponse.json(

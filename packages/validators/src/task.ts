@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { partialUpdate } from './partial'
 
+/** Links a task to a line in an Obsidian vault: `<vault name>:<line id>`. */
+export const VAULT_REF_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/
+
 export const createTaskSchema = z.object({
   title: z.string().min(1).max(500),
   notes: z.string().max(10000).nullable().optional(),
@@ -18,6 +21,8 @@ export const createTaskSchema = z.object({
   flexibility: z.enum(['flexible', 'not_flexible']).default('flexible'),
   status: z.enum(['backlog', 'in_progress', 'check', 'done']).default('backlog'),
   board: z.enum(['current', 'future']).default('current'),
+  completed_at: z.string().datetime().nullable().optional(),
+  vault_ref: z.string().regex(VAULT_REF_PATTERN).nullable().optional(),
   tag_ids: z.array(z.string().uuid()).max(50).default([]),
   reminders: z.array(z.object({ minutes_before: z.number().int().positive() })).max(20).default([]),
   subtasks: z.array(z.object({

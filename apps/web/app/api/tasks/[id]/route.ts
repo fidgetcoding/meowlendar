@@ -5,6 +5,9 @@ import { updateTaskSchema } from '@poolendar/validators'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
+// Postgres unique_violation. The only unique index on a task is (user_id, vault_ref).
+const UNIQUE_VIOLATION = '23505'
+
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const auth = await authenticate(request)
   if (isAuthError(auth)) return auth
@@ -110,14 +113,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  // Handle completed_at transitions
+  // Handle completed_at. A caller may supply the date (the vault sync does, from
+  // a line's done date). Otherwise it follows the status transition. A task that
+  // is not done never carries one, and a done task can't have its date blanked.
   const updateFields: Record<string, unknown> = { ...fields }
-  if (fields.status !== undefined) {
-    if (fields.status === 'done' && existing.status !== 'done') {
-      updateFields.completed_at = new Date().toISOString()
-    } else if (fields.status !== 'done' && existing.status === 'done') {
-      updateFields.completed_at = null
+  const nextStatus = fields.status ?? existing.status
+  if (nextStatus === 'done') {
+    if (existing.status !== 'done') {
+      updateFields.completed_at = fields.completed_at ?? new Date().toISOString()
+    } else if (fields.completed_at == null) {
+      delete updateFields.completed_at
     }
+  } else if (existing.status === 'done') {
+    updateFields.completed_at = null
+  } else {
+    delete updateFields.completed_at
   }
 
   const { data: task, error: updateError } = await supabase
@@ -127,6 +137,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     .eq('user_id', userId)
     .select()
     .single()
+
+  if (updateError?.code === UNIQUE_VIOLATION) {
+    return NextResponse.json(
+      { error: 'Another task already uses this vault_ref' },
+      { status: 409 }
+    )
+  }
 
   if (updateError || !task) {
     return NextResponse.json(

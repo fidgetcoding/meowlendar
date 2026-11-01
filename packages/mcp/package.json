@@ -5,7 +5,8 @@
   "description": "MCP server for Meowlendar: calendar, tasks, routines, and booking tools for Claude Code and other MCP clients",
   "main": "./dist/index.js",
   "bin": {
-    "meowlendar-mcp": "./dist/index.js"
+    "meowlendar-mcp": "./dist/index.js",
+    "meowlendar-vault": "./dist/vault-cli.js"
   },
   "files": [
     "dist",

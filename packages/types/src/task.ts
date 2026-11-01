@@ -36,6 +36,8 @@ export interface Task {
   completed_at: string | null
   position: number | null
   reminders: { minutes_before: number }[]
+  /** Link to a line in an Obsidian vault, `<vault name>:<line id>`. Null when unlinked. */
+  vault_ref: string | null
   created_at: string
   updated_at: string
   subtasks?: Subtask[]

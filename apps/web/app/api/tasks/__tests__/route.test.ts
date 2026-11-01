@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 import { GET, POST } from '../route'
@@ -341,5 +343,108 @@ describe('POST /api/tasks', () => {
     const res = await POST(req)
 
     expect(res.status).toBe(401)
+  })
+})
+
+// ── vault_ref (the 2ndBrain link) ─────────────────────────────────────────
+
+describe('vault_ref on the tasks collection', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function mockRpc(result: { data: unknown; error: unknown }) {
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({})
+    supabase.rpc = vi.fn().mockResolvedValue(result)
+    return supabase
+  }
+
+  const created = { data: { id: 't-new', title: 'Linked', vault_ref: 'work:mw-1a2b3c4d' }, error: null }
+
+  it('passes vault_ref to the create RPC and returns it', async () => {
+    const supabase = mockRpc(created)
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'Linked', vault_ref: 'work:mw-1a2b3c4d' }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).vault_ref).toBe('work:mw-1a2b3c4d')
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'create_task_with_children',
+      expect.objectContaining({ p_task: expect.objectContaining({ vault_ref: 'work:mw-1a2b3c4d' }) }),
+    )
+  })
+
+  it('passes a completed_at to the create RPC', async () => {
+    const supabase = mockRpc(created)
+    await POST(
+      createRequest('POST', '/api/tasks', { title: 'Done', status: 'done', completed_at: '2026-04-16T12:00:00.000Z' }),
+    )
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'create_task_with_children',
+      expect.objectContaining({ p_task: expect.objectContaining({ completed_at: '2026-04-16T12:00:00.000Z' }) }),
+    )
+  })
+
+  it('accepts null and leaves vault_ref out when it is not sent', async () => {
+    const supabase = mockRpc(created)
+    expect((await POST(createRequest('POST', '/api/tasks', { title: 'A', vault_ref: null }))).status).toBe(201)
+    await POST(createRequest('POST', '/api/tasks', { title: 'B' }))
+    const second = supabase.rpc?.mock.calls[1]?.[1] as { p_task: Record<string, unknown> }
+    expect(second.p_task).not.toHaveProperty('vault_ref')
+  })
+
+  it.each(['has space', 'emoji\u{1F194}', '../x', 'x'.repeat(129), ''])('rejects the vault_ref %j with 422', async (ref) => {
+    const supabase = mockRpc(created)
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'A', vault_ref: ref }))
+    expect(res.status).toBe(422)
+    expect(supabase.rpc).not.toHaveBeenCalled()
+  })
+
+  it('answers 409 when another task already holds the vault_ref', async () => {
+    mockRpc({ data: null, error: { code: '23505', message: 'duplicate key' } })
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'A', vault_ref: 'work:dup' }))
+    expect(res.status).toBe(409)
+  })
+
+  it('still answers 500 for any other RPC failure', async () => {
+    mockRpc({ data: null, error: { code: '42501', message: 'nope' } })
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'A' }))
+    expect(res.status).toBe(500)
+  })
+
+  it('returns vault_ref on list reads', async () => {
+    mockAuthWithTables({
+      tasks: { data: [{ id: 't1', title: 'A', vault_ref: 'work:abc' }], error: null },
+      task_tags: { data: [], error: null },
+    })
+    const body = await (await GET(createRequest('GET', '/api/tasks'))).json()
+    expect(body.items[0].vault_ref).toBe('work:abc')
+  })
+})
+
+describe('migration 030', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/030_task_vault_ref.sql'), 'utf8')
+  const original = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/013_task_write_rpcs.sql'), 'utf8')
+
+  function createFunctionBody(text: string): string {
+    const start = text.indexOf('create or replace function public.create_task_with_children')
+    return text.slice(start, text.indexOf('$$;', start))
+  }
+
+  it('adds the column and a partial unique index', () => {
+    expect(sql).toMatch(/add column if not exists vault_ref text/)
+    expect(sql).toMatch(/on public\.tasks \(user_id, vault_ref\)\s+where vault_ref is not null/)
+  })
+
+  it('makes the create RPC keep vault_ref and a supplied completed_at', () => {
+    const body = createFunctionBody(sql)
+    expect(body).toMatch(/completed_at,\s+vault_ref\s+\) values/)
+    expect(body).toContain("p_task->>'vault_ref'")
+    expect(body).toContain("coalesce((p_task->>'completed_at')::timestamptz, now())")
+  })
+
+  it('changes nothing else in the RPC', () => {
+    const normalize = (text: string) => text.replace(/\s+/g, ' ')
+    const before = normalize(createFunctionBody(original))
+    const after = normalize(createFunctionBody(sql))
+      .replace("completed_at, vault_ref ) values", 'completed_at ) values')
+      .replace("case when v_status = 'done' then coalesce((p_task->>'completed_at')::timestamptz, now()) else null end, p_task->>'vault_ref' )", "case when v_status = 'done' then now() else null end )")
+    expect(after).toBe(before)
   })
 })

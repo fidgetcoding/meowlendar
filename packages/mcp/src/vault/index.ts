@@ -1,0 +1,6 @@
+export { createTasksApi } from './api.js'
+export { runCli, HELP } from './cli.js'
+export { listConnections } from './config.js'
+export { applyVault, planVault } from './session.js'
+export { CONFLICT_RULE, VaultError, PlanMismatchError } from './types.js'
+export type { TasksApi, Plan, ApplyResult, Connection } from './types.js'

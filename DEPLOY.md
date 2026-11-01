@@ -186,3 +186,28 @@ claude mcp add meowlendar -s user \
 ```
 
 `claude mcp list` should show `meowlendar` as connected. The app must be running for the tools to work. See `packages/mcp/README.md`.
+
+## 8. Link an Obsidian vault (optional)
+
+The 2ndBrain link keeps Obsidian Tasks lines in a vault folder and your tasks in two-way sync. It works on any Obsidian vault using the Obsidian Tasks plugin format. A hosted app can't reach your files, so it runs on your machine and talks to your instance with an API key.
+
+Migration `030_task_vault_ref.sql` has to be applied first (`pnpm setup:local`, or `supabase db push` on a hosted project).
+
+```bash
+pnpm --filter meowlendar-mcp build
+export MEOWLENDAR_API_KEY=pk_your_key
+export MEOWLENDAR_API_URL=http://localhost:3000
+node packages/mcp/dist/vault-cli.js connect --name work --vault /absolute/path/to/vault --folder Tasks
+node packages/mcp/dist/vault-cli.js plan --name work
+node packages/mcp/dist/vault-cli.js apply --name work --plan <id from the plan>
+```
+
+Once the package is installed, the same command is `meowlendar-vault`.
+
+- **Dry run.** `plan` writes nothing. It shows every line and app change, the conflicts, what was removed or deleted on each side, and what it skipped. `apply` refuses if anything changed since that plan.
+- **Conflict rule.** If both sides changed the same field since the last sync, the vault wins, and the app value that lost is listed under `conflicts`. A field changed on only one side flows to the other.
+- **Backups.** Every file about to change and the state file are copied to `<vault>/.meowlendar/backups/<timestamp>/` first. If that fails, nothing is written. Old backups are not pruned.
+- **Deletes.** Nothing deletes a line or a task. A removed line unlinks its task, and a deleted task marks its line `[-]`.
+- **Rate limit.** The app allows 100 writes per minute per key. A first sync bigger than that stops at the limit. Run `plan` and `apply` again a minute later to continue.
+
+See `packages/mcp/README.md` for the field mapping and path rules.

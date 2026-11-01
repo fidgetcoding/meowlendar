@@ -31,7 +31,7 @@ type TaskListFilters = {
 
 export type CreateTaskInput = Omit<
   Task,
-  'id' | 'created_at' | 'updated_at' | 'subtasks' | 'tags' | 'children' | 'user_id'
+  'id' | 'created_at' | 'updated_at' | 'subtasks' | 'tags' | 'children' | 'user_id' | 'vault_ref'
 > & {
   tag_ids?: string[]
   /**
@@ -229,6 +229,7 @@ export function useCreateTask() {
         // replaced by the real row on settle; nothing renders off user_id.
         user_id: taskData.user_id ?? '',
         id: tempId,
+        vault_ref: null,
         subtasks: [],
         tags: [],
         children: [],

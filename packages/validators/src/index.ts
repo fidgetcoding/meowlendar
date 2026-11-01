@@ -5,6 +5,7 @@ export {
   deleteEventQuerySchema,
 } from './event'
 export {
+  VAULT_REF_PATTERN,
   createTaskSchema,
   updateTaskSchema,
   moveTaskSchema,

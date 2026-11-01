@@ -548,3 +548,29 @@ describe('reorderSubtasksSchema', () => {
     expect(result.error?.issues[0]?.path).toEqual(['subtask_ids'])
   })
 })
+
+describe('vault_ref', () => {
+  it.each(['work:mw-1a2b3c4d', 'a', 'A.b_c-d:e', 'x'.repeat(128)])('accepts %s', (ref) => {
+    expect(createTaskSchema.safeParse({ ...validTask(), vault_ref: ref }).success).toBe(true)
+    expect(updateTaskSchema.safeParse({ vault_ref: ref }).success).toBe(true)
+  })
+
+  it.each(['', 'has space', 'x'.repeat(129), '../up', 'a/b', 'caf\u00e9', 'a\nb'])('rejects %j', (ref) => {
+    expect(createTaskSchema.safeParse({ ...validTask(), vault_ref: ref }).success).toBe(false)
+    expect(updateTaskSchema.safeParse({ vault_ref: ref }).success).toBe(false)
+  })
+
+  it('is nullable and optional', () => {
+    expect(createTaskSchema.parse({ ...validTask(), vault_ref: null }).vault_ref).toBeNull()
+    expect(createTaskSchema.parse(validTask()).vault_ref).toBeUndefined()
+    expect(updateTaskSchema.parse({ vault_ref: null })).toEqual({ vault_ref: null })
+  })
+})
+
+describe('completed_at', () => {
+  it('accepts a timestamp or null and rejects a bare date', () => {
+    expect(createTaskSchema.safeParse({ ...validTask(), completed_at: '2026-04-16T12:00:00.000Z' }).success).toBe(true)
+    expect(updateTaskSchema.safeParse({ completed_at: null }).success).toBe(true)
+    expect(updateTaskSchema.safeParse({ completed_at: '2026-04-16' }).success).toBe(false)
+  })
+})

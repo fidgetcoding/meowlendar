@@ -13,7 +13,8 @@ const pkgDir = join(root, 'packages/mcp')
 const work = mkdtempSync(join(tmpdir(), 'meow-mcp-pack-'))
 const home = join(work, 'home')
 const app = join(work, 'app')
-const MIN_TOOLS = 59
+const MIN_TOOLS = 62
+const VAULT_HELP_MARKER = 'the vault wins'
 
 const cleanEnv = {
   PATH: process.env.PATH,
@@ -83,6 +84,18 @@ function handshake(command, args, cwd) {
   })
 }
 
+function checkVaultHelp(label, command, args, cwd) {
+  // No API key on purpose: --help has to work before anything is set up.
+  const output = run(command, args, {
+    cwd,
+    env: { ...cleanEnv, MEOWLENDAR_CONFIG_DIR: join(work, 'config') },
+  })
+  if (!output.includes(VAULT_HELP_MARKER)) {
+    throw new Error(`meowlendar-vault --help via ${label} did not print the conflict rule. Got: ${output.slice(0, 400)}`)
+  }
+  console.log(`meowlendar-vault --help via ${label}: ok`)
+}
+
 try {
   execFileSync('mkdir', ['-p', home, app])
   writeFileSync(join(work, 'npmrc'), '')
@@ -105,11 +118,13 @@ try {
   )
   console.log(`npx from a clean cache: ${viaNpx} tools`)
   if (viaNpx < MIN_TOOLS) throw new Error(`Expected at least ${MIN_TOOLS} tools, got ${viaNpx}`)
+  checkVaultHelp('npx', 'npx', ['-y', `--package=${tarball}`, 'meowlendar-vault', '--help'], app)
 
   run('npm', ['install', '--no-save', tarball], { cwd: app, env: cleanEnv })
   const viaInstall = await handshake(join(app, 'node_modules/.bin/meowlendar-mcp'), [], app)
   console.log(`npm install from a clean cache: ${viaInstall} tools`)
   if (viaInstall < MIN_TOOLS) throw new Error(`Expected at least ${MIN_TOOLS} tools, got ${viaInstall}`)
+  checkVaultHelp('npm install', join(app, 'node_modules/.bin/meowlendar-vault'), ['--help'], app)
 
   console.log('ok: the published package will start from a clean machine')
 } finally {

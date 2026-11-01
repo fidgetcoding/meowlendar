@@ -7,6 +7,8 @@ import {
 import { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from './types.js'
 import { validateArgs } from './validate.js'
+import { resolveApiConfig } from './env.js'
+import { createTasksApi } from './vault/api.js'
 import {
   getCalendarToolDefinitions,
   getCalendarToolHandlers,
@@ -32,18 +34,13 @@ import {
   getProfileToolHandlers,
   getBulkToolDefinitions,
   getBulkToolHandlers,
+  getVaultToolDefinitions,
+  getVaultToolHandlers,
 } from './tools/index.js'
 
 // --- Configuration ---
 
-// Base URL of the app the MCP wraps. MEOWLENDAR_* are the documented names; the
-// POOLENDAR_* names still work for configs written before the rename.
-const API_URL =
-  process.env.MEOWLENDAR_API_URL ??
-  process.env.POOLENDAR_API_URL ??
-  process.env.POOLENDAR_URL ??
-  'http://localhost:3000'
-const API_KEY = process.env.MEOWLENDAR_API_KEY ?? process.env.POOLENDAR_API_KEY
+const { apiUrl: API_URL, apiKey: API_KEY } = resolveApiConfig()
 
 if (!API_KEY) {
   console.error(
@@ -82,6 +79,7 @@ function getAllToolDefinitions(): ToolDefinition[] {
     ...getSearchToolDefinitions(),
     ...getProfileToolDefinitions(),
     ...getBulkToolDefinitions(),
+    ...getVaultToolDefinitions(),
   ]
 }
 
@@ -101,6 +99,7 @@ function getAllToolHandlers(): Record<string, ToolHandler> {
     ...getSearchToolHandlers(client),
     ...getProfileToolHandlers(client),
     ...getBulkToolHandlers(client),
+    ...getVaultToolHandlers(createTasksApi(client)),
   }
 }
 
