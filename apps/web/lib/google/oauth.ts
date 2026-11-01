@@ -37,7 +37,9 @@ export function getGoogleOAuthUrl(
     response_type: 'code',
     scope: GOOGLE_SCOPES,
     access_type: 'offline',
-    prompt: 'consent',
+    // select_account: without it Google reuses the signed-in session, so a
+    // second "Connect" can't reach a different account.
+    prompt: 'select_account consent',
     state: signedState,
   })
 

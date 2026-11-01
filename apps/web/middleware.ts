@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/middleware'
 
+/** The host this deployment serves the app on, from NEXT_PUBLIC_APP_URL. */
+function configuredAppHost(): string | null {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_APP_URL ?? '').hostname.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   // Strip the port before any host analysis. Leaving it on made `localhost:3000`
@@ -22,10 +31,15 @@ export async function middleware(request: NextRequest) {
   const hasSubdomainLabel =
     labels.length > 2 || (labels.length === 2 && labels[1] === 'localhost')
 
+  // A self-hosted app on `calendar.example.com` or `my-app.vercel.app` has three
+  // labels too, and must not be swallowed by the booking rewrite below.
+  const isDeploymentHost = host === configuredAppHost() || host.endsWith('.vercel.app')
+
   // Subdomain routing for booking pages
   // If subdomain is not the app itself, treat it as a booking page namespace
   const isBookingSubdomain =
     !isIpLiteral &&
+    !isDeploymentHost &&
     hasSubdomainLabel &&
     subdomain !== 'app' &&
     subdomain !== 'www' &&

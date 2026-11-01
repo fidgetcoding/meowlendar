@@ -172,7 +172,7 @@ export default function LoginPage() {
         return
       }
     } else {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -181,6 +181,12 @@ export default function LoginPage() {
       })
       if (error) {
         setError(error.message)
+        setLoading(false)
+        return
+      }
+      // Hosted Supabase confirms emails by default, so there is no session yet.
+      if (!data.session) {
+        setError('Check your email and open the confirmation link to finish signing up.')
         setLoading(false)
         return
       }

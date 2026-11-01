@@ -97,9 +97,9 @@ export function AccountTab({
           placeholder="username"
         />
         <p className="text-xs text-[var(--muted)]">
-          Your booking page URL:{' '}
+          Your booking pages live at{' '}
           <span className="text-[var(--accent)]">
-            {username || 'username'}.meowlendar.com
+            {typeof window !== 'undefined' ? window.location.origin : ''}/book/your-link
           </span>
         </p>
         <Input

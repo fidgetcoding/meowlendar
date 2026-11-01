@@ -57,7 +57,7 @@ describe('Google OAuth', () => {
       expect(parsed.searchParams.get('redirect_uri')).toBe('https://app.poolendar.com/callback')
       expect(parsed.searchParams.get('response_type')).toBe('code')
       expect(parsed.searchParams.get('access_type')).toBe('offline')
-      expect(parsed.searchParams.get('prompt')).toBe('consent')
+      expect(parsed.searchParams.get('prompt')).toBe('select_account consent')
       expect(parsed.searchParams.get('state')).toBe('signed-state-123')
     })
 

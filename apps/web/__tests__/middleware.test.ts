@@ -65,6 +65,23 @@ describe('middleware', () => {
       expect(response.headers.get('x-booking-username')).toBe('nate')
     })
 
+    it('does NOT rewrite the host set in NEXT_PUBLIC_APP_URL', async () => {
+      process.env.NEXT_PUBLIC_APP_URL = 'https://calendar.example.com'
+      mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
+      try {
+        const response = await middleware(createRequest('/login', 'calendar.example.com'))
+        expect(response.headers.get('x-booking-username')).toBeNull()
+      } finally {
+        delete process.env.NEXT_PUBLIC_APP_URL
+      }
+    })
+
+    it('does NOT rewrite a vercel.app deployment host', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
+      const response = await middleware(createRequest('/login', 'my-meowlendar.vercel.app'))
+      expect(response.headers.get('x-booking-username')).toBeNull()
+    })
+
     it('does NOT rewrite app.poolendar.com', async () => {
       mockGetUser.mockResolvedValue({
         data: { user: { id: 'u1' } },

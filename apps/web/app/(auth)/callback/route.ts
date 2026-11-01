@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { optionalEnv } from '@/lib/env'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
@@ -60,13 +61,18 @@ export async function GET(request: NextRequest) {
         // Supabase Auth is login-only. Calendar access is a separate OAuth flow
         // (never provider_token). A user with no connected Google account gets
         // sent straight into the Connect flow so the app has calendars to work
-        // with. The session cookies set above ride along on this redirect.
+        // with. The session cookies set above ride along on this redirect. An
+        // email sign-up on a deployment without Google stays in the app rather
+        // than landing on the Connect route's "not configured" error.
         const { count } = await supabase
           .from('google_accounts')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
 
-        if (!count || count === 0) {
+        const googleConfigured =
+          optionalEnv('GOOGLE_CLIENT_ID') && optionalEnv('GOOGLE_CLIENT_SECRET')
+
+        if (googleConfigured && (!count || count === 0)) {
           const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
           return NextResponse.redirect(`${appUrl}/api/google/connect`)
         }
