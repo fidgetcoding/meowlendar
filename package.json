@@ -2,7 +2,8 @@
   "name": "meowlendar",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
+    "setup:local": "node scripts/setup-local.mjs",
+    "dev": "turbo dev --filter=@poolendar/web",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
