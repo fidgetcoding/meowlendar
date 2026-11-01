@@ -6,7 +6,7 @@ export function getBookingToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_booking_links',
       description:
-        'List all booking links. Each booking link is a shareable URL (e.g., nate.poolendar.com/lorecraft-30min) that allows external people to book time on your calendar.',
+        'List all booking links. Each booking link is a shareable URL (e.g., your-app.example.com/book/30min) that allows external people to book time on your calendar.',
       inputSchema: {
         type: 'object' as const,
         properties: {},
@@ -15,19 +15,19 @@ export function getBookingToolDefinitions(): ToolDefinition[] {
     {
       name: 'create_booking_link',
       description:
-        'Create a new booking link with customizable duration, availability windows, and settings. The link is accessible at {username}.poolendar.com/{slug}.',
+        'Create a new booking link with customizable duration, availability windows, and settings. The link is accessible at /book/{slug}.',
       inputSchema: {
         type: 'object' as const,
         properties: {
           slug: {
             type: 'string',
             description:
-              'URL-safe slug for the booking link (e.g., "30min", "lorecraft-intro"). Forms part of the URL: {username}.poolendar.com/{slug}.',
+              'URL-safe slug for the booking link (e.g., "30min", "intro-call"). Forms part of the URL: /book/{slug}.',
           },
           name: {
             type: 'string',
             description:
-              'Display name for the booking link (e.g., "LORECRAFT - 30min", "Quick Chat").',
+              'Display name for the booking link (e.g., "Intro - 30min", "Quick Chat").',
           },
           duration_minutes: {
             type: 'number',

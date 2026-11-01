@@ -1,8 +1,7 @@
 // SERVICE ROLE: Not needed — authenticated endpoint. Uses the session user's
 // client (RLS-scoped) so dispatching is scoped to the current user's
-// subscriptions.  API-key auth falls back to service role inside
-// authenticate(), which is acceptable since the API key already verified the
-// user's identity.
+// subscriptions. API-key callers get the same RLS scoping through a short-lived
+// user JWT minted in authenticate().
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../../lib/auth/helpers'
 import { z } from 'zod'

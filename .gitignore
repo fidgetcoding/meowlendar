@@ -3,8 +3,10 @@ node_modules/
 dist/
 .turbo/
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.pem
+*.key
 *.tsbuildinfo
 .vercel
 .supabase/

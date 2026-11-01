@@ -107,7 +107,8 @@ Any scheduler works: crontab, GitHub Actions, n8n, or Vercel Cron if your plan a
 3. **Authentication > URL Configuration**: set **Site URL** to your app URL, and add `<your app URL>/callback` under **Redirect URLs**.
 4. **Authentication > Providers > Google**: enable it and paste the client ID and secret.
 5. Hosted Supabase confirms emails by default and its built-in mailer is heavily rate limited. Add your own SMTP, or turn confirmation off for a personal install.
-6. Create `apps/web/.env.local` from the table in section 6.
+6. **Realtime > Settings**: turn off **Allow public access**. Notifications use private channels.
+7. Create `apps/web/.env.local` from the table in section 6.
 
 **API keys and the MCP need `SUPABASE_JWT_SECRET`.** The app signs a short-lived HS256 token for each API-key request. Copy the legacy JWT secret from **Project Settings > JWT Keys**. A project without a legacy HS256 secret will not be able to serve API keys or the MCP as built.
 
@@ -121,7 +122,9 @@ Any host that runs Next.js works. On Vercel:
 4. Set `NEXT_PUBLIC_APP_URL` to your final URL, with no trailing slash. It is built into the app, so redeploy after changing it.
 5. Add the hosted redirect URI from section 2 and the Supabase URLs from section 4.
 
-Booking pages are served at `/book/<slug>`. Subdomain booking pages (`you.example.com`) do not work, so no wildcard DNS is needed.
+Booking pages are served at `/book/<slug>`. Subdomain booking pages (`you.example.com`) do not work, so no wildcard DNS is needed. Each slug is unique across the install.
+
+Read `SECURITY.md` before exposing an install to the internet. Security headers are set in `apps/web/next.config.js`, so they apply on any host. `NEXT_PUBLIC_SUPABASE_URL` must be set at build time for the Content Security Policy to allow your Supabase project.
 
 ## 6. Environment variables
 
@@ -144,6 +147,7 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | for push alerts | `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | for push alerts | Same command |
 | `VAPID_SUBJECT` | for push alerts | `mailto:you@example.com` |
+| `TRUSTED_IP_HEADER` | behind a non-Vercel proxy | Header your proxy overwrites, such as `x-real-ip`. See `SECURITY.md` |
 
 ## 7. Connect the MCP
 

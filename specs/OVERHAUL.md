@@ -19,8 +19,9 @@ Three failure layers:
    schedule). `lib/google/{oauth,calendar,sync}.ts` survive as orphaned dead code. No calendars can be
    connected → `POST /api/events` 404s app-wide.
 3. **Broken API thesis.** Spec #22 fails via REST (`GET /api/events` never unions scheduled tasks;
-   browser works only because hooks bypass REST). API-key path uses service-role client bypassing RLS
-   (`lib/auth/helpers.ts:19-30`). Google tokens plaintext. Rate limiting only on 5 public routes.
+   browser works only because hooks bypass REST). API-key path used a service-role client bypassing RLS
+   (fixed: requests now run as the user through a short-lived JWT). Google tokens were plaintext
+   (fixed: AES-256-GCM in `lib/crypto.ts`). Rate limiting only on 5 public routes.
    MCP not npx-installable.
 
 Plus ~2,942 LOC scope creep (Frames, auto-schedule engine, Anthropic classifier) against explicit
@@ -38,14 +39,10 @@ v1 non-goals.
 - **API keys stay SHA-256** (fine for 128-bit random keys); TECH.md amended rather than moving to bcrypt.
 - **OAuth architecture:** Supabase Auth = login only. Calendar access exclusively via the dedicated
   Google Connect flow (own client ID/secret, calendar scopes). Never rely on `provider_token`.
-- **Cloud footprint is gone (discovered 2026-07-03):** Supabase project `vzrrxslxoflcdrbvtscs` no
-  longer exists (DNS gone, invisible to org) AND Vercel project `prj_avkoGpt9PTSKYTzRCaZA0GR3AJIO`
-  404s. Schema fully recoverable from migrations 001-009. Unit tests are DB-mocked so Phases 1-3
-  proceed; a real backend is required by Phase 4's E2E gate; Phase 7 is full re-provisioning
-  (new Vercel project + Supabase project + Cloudflare DNS to poolendar.com). OPEN DECISION (Nate):
-  new Supabase project ($10/mo in org ojarqfhafockrybmozmb) vs local stack (colima + supabase CLI).
-  New project must keep a legacy HS256 JWT secret available (`SUPABASE_JWT_SECRET`) for the
-  Phase 2 API-key→user-JWT auth design.
+- **Cloud footprint is gone (discovered 2026-07-03):** the original Supabase and Vercel projects no
+  longer exist. The schema is fully recoverable from migrations. Unit tests are DB-mocked, so Phases
+  1-3 proceed; a real backend is required by Phase 4's E2E gate. A new project must keep a legacy
+  HS256 JWT secret available (`SUPABASE_JWT_SECRET`) for the Phase 2 API-key to user-JWT auth design.
 
 - **NO Google OAuth and NO paid database until Nate says otherwise (2026-07-03, his call).**
   He wants to mess around with the app on the free local stack first. Email/password auth +
@@ -70,7 +67,7 @@ v1 non-goals.
 1. **Google OAuth** — "set up google oauth": create Google Cloud OAuth client, add redirect
    URIs (localhost + prod), put GOOGLE_CLIENT_ID/SECRET in env. Unlocks: calendar connect,
    event sync, freeBusy live verification, invite sending.
-2. **Paid Supabase** — "create the supabase project" ($10/mo, org ojarqfhafockrybmozmb).
+2. **Hosted Supabase** — "create the supabase project".
    Needs legacy HS256 JWT secret enabled for the API-key auth design. Apply migrations 001-014.
 3. **Deploy** — "deploy it": new Vercel project, poolendar.com DNS via Cloudflare, real env
    secrets (Resend, VAPID, CRON_SECRET), n8n cron schedules for reminders/sync-poll/webhook-renewal,
@@ -133,8 +130,8 @@ v1 non-goals.
 
 - `apps/web/app/(app)/page.tsx:58` — hardcoded `calendars = []`
 - `apps/web/app/(app)/page.tsx:193-205` — grid handler props never passed
-- `apps/web/lib/auth/helpers.ts:19-30` — service-role client on API-key path (RLS bypass)
-- `supabase/migrations/001_initial_schema.sql:48-49` — plaintext Google tokens
+- `apps/web/lib/auth/helpers.ts:19-30` — service-role client on API-key path (RLS bypass). Fixed.
+- `supabase/migrations/001_initial_schema.sql:48-49` — plaintext Google tokens. Fixed in `lib/crypto.ts`.
 - `apps/web/app/api/events/route.ts:79-84` — event create 404s with empty calendars
 - `apps/web/app/api/booking/availability/[slug]/route.ts:167` — single-link availability (no #56 pool)
 - `apps/web/app/api/booking/book/[slug]/route.ts:215-234` — no email/ICS/notification on booking

@@ -24,7 +24,7 @@ import { authenticate } from '@/lib/auth/helpers'
 
 const TEST_USER_ID = '00000000-0000-4000-8000-000000000001'
 const TEST_EVENT_ID = '00000000-0000-4000-8000-000000000010'
-const USER_EMAIL = 'nate@poolendar.com'
+const USER_EMAIL = 'user@example.com'
 
 function createRequest(url: string, body?: unknown): NextRequest {
   return new NextRequest(new URL(url, 'http://localhost:3000'), {

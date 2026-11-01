@@ -6,7 +6,7 @@ export function getTagToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_tags',
       description:
-        'List all tags. Tags are colored labels used to categorize tasks (e.g., "01 URGENT", "07 FIDGETCODING"). Tags also serve as project identifiers for kanban board filtering.',
+        'List all tags. Tags are colored labels used to categorize tasks (e.g., "01 URGENT", "07 CLIENT WORK"). Tags also serve as project identifiers for kanban board filtering.',
       inputSchema: {
         type: 'object' as const,
         properties: {},

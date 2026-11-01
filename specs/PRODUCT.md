@@ -124,7 +124,7 @@ Existing calendar apps have crippled APIs. Tasks created via Morgen's MCP land i
 
 ### Tasks
 
-18. Tasks render on the calendar as blocks with a checkbox icon on the left edge and a dashed/outlined border — visually distinct from solid-fill events. The outline color matches the color of the calendar they're assigned to (set via "Default calendar for tasks" in Settings), NOT tag colors. Tag colors are purely for tag badge navigation in the sidebar/kanban. The visual pattern: a solid green block is an event from nate@lorecraft.io; an outlined green block beside it is a task assigned to the same calendar — same color family, different fill style.
+18. Tasks render on the calendar as blocks with a checkbox icon on the left edge and a dashed/outlined border — visually distinct from solid-fill events. The outline color matches the color of the calendar they're assigned to (set via "Default calendar for tasks" in Settings), NOT tag colors. Tag colors are purely for tag badge navigation in the sidebar/kanban. The visual pattern: a solid green block is an event from work@example.com; an outlined green block beside it is a task assigned to the same calendar — same color family, different fill style.
 
 19. A task has:
     - Title (required)
@@ -271,14 +271,14 @@ Existing calendar apps have crippled APIs. Tasks created via Morgen's MCP land i
 51. Booking pages are accessed from the sidebar ribbon (calendar-with-clock icon).
 
 52. The booking panel shows:
-    - Link to the user's booking page (e.g., `nate.poolendar.com/lorecraft-30min`)
+    - Link to the user's booking page (e.g., `you.example.com/intro-30min`)
     - Public links (listed by name, duration, booking count)
     - Private links (same format, unlisted on public page)
 
-    URL structure: `{username}.poolendar.com/{link-slug}` (e.g., `nate.poolendar.com/lorecraft-30min`). The username subdomain is the user's booking namespace; each booking link is a path under it.
+    URL structure: `{username}.poolendar.com/{link-slug}` (e.g., `you.example.com/intro-30min`). The username subdomain is the user's booking namespace; each booking link is a path under it.
 
 53. Each booking link defines:
-    - Name (e.g., "LORECRAFT - 30min")
+    - Name (e.g., "Intro - 30min")
     - Duration (30m, 60m, etc.)
     - Weekly availability grid (drag to paint available blocks)
     - Timezone (default: America/New_York)
@@ -314,7 +314,7 @@ Existing calendar apps have crippled APIs. Tasks created via Morgen's MCP land i
 
 ### Tags
 
-58. Tags are colored, numbered labels (e.g., "01 URGENT", "07 FIDGETCODING") used to categorize tasks. Tags are global across all views.
+58. Tags are colored, numbered labels (e.g., "01 URGENT", "07 CLIENT WORK") used to categorize tasks. Tags are global across all views.
 
 59. Tags are managed in Settings > Tags. Each has a name, color, and number prefix. Tags can be created, edited (name + color), and deleted.
 

@@ -1,0 +1,41 @@
+# Security
+
+## Reporting a vulnerability
+
+Please report privately through **Security > Report a vulnerability** on the GitHub repository. Do not open a public issue. Include the steps to reproduce and what an attacker gains.
+
+There is no hosted Meowlendar service. Every install is run by its owner, so a fix only reaches you when you pull it and apply new migrations.
+
+## Secure your install
+
+Run through this before putting an install on the internet.
+
+**Supabase**
+- Apply every migration with `supabase db push`. `015_security_hardening.sql` closes cross-user access and must be present.
+- Turn off **Realtime > Settings > Allow public access**. Notifications use private channels, so nothing needs public ones.
+- Keep email confirmation on, or turn off sign-ups, unless you trust everyone who can reach the URL. Signing up gives an account on your install.
+- Use a password rule stronger than the 6-character local default.
+- The service role key and `SUPABASE_JWT_SECRET` can each act as any user. Keep them server-side only.
+
+**App**
+- Set `NEXT_PUBLIC_APP_URL` to your real URL. Redirects and Google callbacks depend on it.
+- Behind a proxy that is not Vercel, set `TRUSTED_IP_HEADER` to the header your proxy controls, such as `x-real-ip`. Without it, all public booking visitors share one rate-limit bucket. Never name a header your proxy does not overwrite, because clients could then forge it.
+- Generate `GOOGLE_TOKEN_ENC_KEY`, `CRON_SECRET` and `GOOGLE_WEBHOOK_SECRET` yourself, and never reuse them between installs.
+- Serve over HTTPS.
+
+**API keys**
+- Keys give full access to the account, including managing other keys, and they do not expire. Create one per tool and delete any you stop using.
+
+## How it is built
+
+- Row Level Security is on for every table. Composite foreign keys stop a row from pointing at another user's Google account or calendar.
+- The public anon key has no table or function access. Public booking goes through API routes that enforce availability and rate limits.
+- API-key requests run as the key's user through a 120-second JWT, not the service role.
+- Google tokens are encrypted with AES-256-GCM before they reach the database.
+- The MCP server validates every tool call against its schema, encodes path segments, and logs one line per call to stderr, without arguments.
+
+## Known limits
+
+- Telegram bot tokens are stored unencrypted in `profiles.settings`, readable by the account owner and the database admin.
+- The Content Security Policy allows inline scripts, because the Next.js app has no nonce setup. It limits where data can go more than what can run.
+- Browser sessions have no per-user rate limit. API keys do.
