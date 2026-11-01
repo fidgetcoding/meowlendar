@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  addDaysStr,
   computeBlockedIntervals,
   computeAvailableSlots,
   hasConflict,
@@ -18,6 +19,19 @@ const nineToFive: AvailabilityWindow[] = [{ day: 'monday', start: '13:00', end: 
 function et(hhmm: string): string {
   return `2026-08-03T${hhmm}:00-04:00`
 }
+
+describe('addDaysStr', () => {
+  it.each(['Asia/Dubai', 'UTC', 'America/New_York'])('advances the date with TZ=%s', (tz) => {
+    const original = process.env.TZ
+    process.env.TZ = tz
+    try {
+      expect(addDaysStr('2026-08-03', 1)).toBe('2026-08-04')
+      expect(addDaysStr('2026-12-31', 1)).toBe('2027-01-01')
+    } finally {
+      process.env.TZ = original
+    }
+  })
+})
 
 describe('computeBlockedIntervals', () => {
   it('expands a booking by its own buffer plus the current link buffer', () => {

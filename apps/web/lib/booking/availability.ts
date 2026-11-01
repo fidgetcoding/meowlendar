@@ -84,7 +84,9 @@ export function timeInTimezoneToUtc(dateStr: string, timeStr: string, timezone: 
 
 export function addDaysStr(dateStr: string, days: number): string {
   const parts = dateStr.split('-').map(Number)
-  const d = new Date(parts[0]!, (parts[1] ?? 1) - 1, (parts[2] ?? 1) + days)
+  // Date.UTC, not local time: local midnight east of UTC serializes to the
+  // previous day, so the date would never advance and slot loops would spin.
+  const d = new Date(Date.UTC(parts[0]!, (parts[1] ?? 1) - 1, (parts[2] ?? 1) + days))
   return d.toISOString().split('T')[0]!
 }
 
