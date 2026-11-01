@@ -27,7 +27,7 @@ export function ApiKeyManager({ apiKeys, onKeysChange }: ApiKeyManagerProps) {
 
     setCreating(true)
     try {
-      const res = await fetch('/api/auth/api-keys', {
+      const res = await fetch('/api/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newKeyName.trim() }),
@@ -39,9 +39,9 @@ export function ApiKeyManager({ apiKeys, onKeysChange }: ApiKeyManagerProps) {
         return
       }
 
-      const data = await res.json()
-      setNewlyCreatedKey(data.key)
-      onKeysChange([...apiKeys, data.apiKey])
+      const { key, ...apiKey } = await res.json()
+      setNewlyCreatedKey(key)
+      onKeysChange([...apiKeys, apiKey])
       setNewKeyName('')
     } catch {
       toast.error('Failed to create API key')
@@ -52,7 +52,7 @@ export function ApiKeyManager({ apiKeys, onKeysChange }: ApiKeyManagerProps) {
 
   async function handleDeleteKey(id: string) {
     try {
-      const res = await fetch(`/api/auth/api-keys?id=${id}`, {
+      const res = await fetch(`/api/api-keys/${id}`, {
         method: 'DELETE',
       })
 
@@ -196,7 +196,7 @@ export function ApiKeyManager({ apiKeys, onKeysChange }: ApiKeyManagerProps) {
       </div>
 
       <a
-        href="https://github.com/poolendar/docs"
+        href="https://github.com/fidgetcoding/meowlendar/blob/main/packages/mcp/README.md"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"

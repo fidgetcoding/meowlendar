@@ -44,7 +44,7 @@ const POOLENDAR_API_KEY = process.env.POOLENDAR_API_KEY
 if (!POOLENDAR_API_KEY) {
   console.error(
     'poolendar-mcp: POOLENDAR_API_KEY environment variable is required.\n' +
-      'Generate an API key in Poolendar Settings > Profile, then set it:\n' +
+      'Generate an API key in the app under Settings > API Keys, then set it:\n' +
       '  export POOLENDAR_API_KEY=pk_...'
   )
   process.exit(1)
