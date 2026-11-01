@@ -50,8 +50,8 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SECRET_KEY=' /tmp/stack.env | cut -d'"' -f2)"
           } >> "$GITHUB_ENV"
       - run: pnpm --filter meowlendar-mcp build
-      - run: pnpm test:integration
       - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:integration
       - name: Browser tests
         run: |
           export NEXT_PUBLIC_APP_URL=http://localhost:3000
