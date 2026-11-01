@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getProfileToolDefinitions(): ToolDefinition[] {
@@ -174,7 +174,7 @@ export function getProfileToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getProfileToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getProfileToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     get_profile: async () => {
       const profile = await client.getProfile()

@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getSearchToolDefinitions(): ToolDefinition[] {
@@ -31,7 +31,7 @@ export function getSearchToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getSearchToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getSearchToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     search: async (args) => {
       const results = await client.search(

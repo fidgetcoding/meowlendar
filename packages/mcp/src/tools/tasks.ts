@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getTaskToolDefinitions(): ToolDefinition[] {
@@ -338,7 +338,7 @@ export function getTaskToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getTaskToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getTaskToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     list_tasks: async (args) => {
       const tasks = await client.listTasks({

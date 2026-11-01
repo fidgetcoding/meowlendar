@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getBulkToolDefinitions(): ToolDefinition[] {
@@ -141,7 +141,7 @@ interface BulkResult {
   error?: string
 }
 
-export function getBulkToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getBulkToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     bulk_create_tasks: async (args) => {
       const tasks = args.tasks as Record<string, unknown>[]

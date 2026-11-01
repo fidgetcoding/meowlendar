@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getSubtaskToolDefinitions(): ToolDefinition[] {
@@ -130,7 +130,7 @@ export function getSubtaskToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getSubtaskToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getSubtaskToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     list_subtasks: async (args) => {
       const subtasks = await client.listSubtasks(args.task_id as string)

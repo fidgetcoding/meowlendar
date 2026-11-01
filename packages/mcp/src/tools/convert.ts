@@ -1,4 +1,4 @@
-import type { MeowlendarClient } from '@poolendar/api-client'
+import type { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getConvertToolDefinitions(): ToolDefinition[] {
@@ -45,7 +45,7 @@ export function getConvertToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getConvertToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
+export function getConvertToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     convert_item: async (args) => {
       const result = await client.convert({
