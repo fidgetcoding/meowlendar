@@ -1,7 +1,6 @@
 // SERVICE ROLE: Not needed — authenticated endpoint. Uses the session user's
 // client (RLS-scoped) so each user can only manage their own push_subscriptions.
-// API-key callers get the same RLS scoping through a short-lived user JWT minted
-// in authenticate().
+// API-key callers get the same RLS scoping through the key's own Auth session.
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../../lib/auth/helpers'
 import { z } from 'zod'

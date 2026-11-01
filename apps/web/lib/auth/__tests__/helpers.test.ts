@@ -20,8 +20,11 @@ vi.mock('../../supabase/server', () => ({
   createClient: vi.fn(async () => mockSupabaseClient),
 }))
 
+vi.mock('../api-key-session', () => ({
+  getApiKeyAccessToken: vi.fn(async () => 'fake.jwt.token'),
+}))
+
 vi.mock('../user-jwt', () => ({
-  mintUserJwt: vi.fn(async () => 'fake.jwt.token'),
   createUserScopedClient: vi.fn(() => mockScopedClient),
 }))
 
@@ -36,7 +39,7 @@ describe('auth helpers', () => {
   let isAuthError: typeof import('../helpers').isAuthError
   let validationError: typeof import('../helpers').validationError
   let authenticateApiKey: Mock
-  let mintUserJwt: Mock
+  let getApiKeyAccessToken: Mock
   let createUserScopedClient: Mock
   let rateLimitAsync: Mock
 
@@ -47,7 +50,6 @@ describe('auth helpers', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
-    process.env.SUPABASE_JWT_SECRET = 'test-jwt-secret'
 
     const helpers = await import('../helpers')
     authenticate = helpers.authenticate
@@ -56,12 +58,12 @@ describe('auth helpers', () => {
 
     authenticateApiKey = (await import('../api-key')).authenticateApiKey as unknown as Mock
     const userJwt = await import('../user-jwt')
-    mintUserJwt = userJwt.mintUserJwt as unknown as Mock
+    getApiKeyAccessToken = (await import('../api-key-session')).getApiKeyAccessToken as unknown as Mock
     createUserScopedClient = userJwt.createUserScopedClient as unknown as Mock
     rateLimitAsync = (await import('../../rate-limit')).rateLimitAsync as unknown as Mock
 
     // Re-establish default resolved values after resetAllMocks.
-    mintUserJwt.mockResolvedValue('fake.jwt.token')
+    getApiKeyAccessToken.mockResolvedValue('fake.jwt.token')
     createUserScopedClient.mockReturnValue(mockScopedClient)
     rateLimitAsync.mockResolvedValue(true)
   })
@@ -78,8 +80,8 @@ describe('auth helpers', () => {
       expect(result).not.toBeInstanceOf(NextResponse)
       const authResult = result as AuthResult
       expect(authResult.userId).toBe('user-from-apikey')
-      // Client came from the user-scoped JWT path, not a service-role client.
-      expect(mintUserJwt).toHaveBeenCalledWith('user-from-apikey')
+      // Client came from the key's own session, not a service-role client.
+      expect(getApiKeyAccessToken).toHaveBeenCalled()
       expect(createUserScopedClient).toHaveBeenCalledWith('fake.jwt.token')
       expect(authResult.supabase).toBe(mockScopedClient)
     })
@@ -106,7 +108,7 @@ describe('auth helpers', () => {
       expect(res.status).toBe(429)
       expect(res.headers.get('Retry-After')).toBe('60')
       // A rate-limited request must not mint a token or build a client.
-      expect(mintUserJwt).not.toHaveBeenCalled()
+      expect(getApiKeyAccessToken).not.toHaveBeenCalled()
       expect(createUserScopedClient).not.toHaveBeenCalled()
     })
   })

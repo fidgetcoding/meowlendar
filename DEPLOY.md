@@ -110,7 +110,7 @@ Any scheduler works: crontab, GitHub Actions, n8n, or Vercel Cron if your plan a
 6. **Realtime > Settings**: turn off **Allow public access**. Notifications use private channels.
 7. Create `apps/web/.env.local` from the table in section 6.
 
-**API keys and the MCP need `SUPABASE_JWT_SECRET`.** The app signs a short-lived HS256 token for each API-key request. Copy the legacy JWT secret from **Project Settings > JWT Keys**. A project without a legacy HS256 secret will not be able to serve API keys or the MCP as built.
+API keys and the MCP need only the service role key and the public key, on old and new projects alike. If you set `SUPABASE_JWT_SECRET` on an earlier version, you can delete it: nothing reads it now, and existing API keys keep working.
 
 ## 5. Deploy the app (optional)
 
@@ -136,8 +136,7 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Publishable key (`sb_publishable_...`) or legacy anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Secret key (`sb_secret_...`) or legacy service role key. Server only |
-| `SUPABASE_JWT_SECRET` | yes | Legacy JWT secret. Needed for API keys and the MCP |
-| `GOOGLE_TOKEN_ENC_KEY` | yes | `openssl rand -base64 32`. Encrypts Google tokens. Changing it orphans stored tokens |
+| `GOOGLE_TOKEN_ENC_KEY` | yes | `openssl rand -base64 32`. Encrypts Google tokens and API key sessions. Changing it orphans stored tokens |
 | `GOOGLE_CLIENT_ID` | for Google | Section 2 |
 | `GOOGLE_CLIENT_SECRET` | for Google | Section 2 |
 | `CRON_SECRET` | for sync | `openssl rand -hex 32` |

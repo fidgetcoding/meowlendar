@@ -13,25 +13,25 @@ describe('env', () => {
 
   describe('requireEnv', () => {
     it('returns a set value', () => {
-      process.env.SUPABASE_JWT_SECRET = 'real-secret'
-      expect(requireEnv('SUPABASE_JWT_SECRET')).toBe('real-secret')
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'real-secret'
+      expect(requireEnv('SUPABASE_SERVICE_ROLE_KEY')).toBe('real-secret')
     })
 
     it('throws when the value is missing', () => {
-      delete process.env.SUPABASE_JWT_SECRET
-      expect(() => requireEnv('SUPABASE_JWT_SECRET')).toThrow(/missing or set to a placeholder/)
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY
+      expect(() => requireEnv('SUPABASE_SERVICE_ROLE_KEY')).toThrow(/missing or set to a placeholder/)
     })
 
     it('treats "placeholder" as missing (case-insensitive)', () => {
-      process.env.SUPABASE_JWT_SECRET = 'Placeholder'
-      expect(() => requireEnv('SUPABASE_JWT_SECRET')).toThrow(/placeholder/i)
-      process.env.SUPABASE_JWT_SECRET = 'PLACEHOLDER'
-      expect(() => requireEnv('SUPABASE_JWT_SECRET')).toThrow()
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'Placeholder'
+      expect(() => requireEnv('SUPABASE_SERVICE_ROLE_KEY')).toThrow(/placeholder/i)
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'PLACEHOLDER'
+      expect(() => requireEnv('SUPABASE_SERVICE_ROLE_KEY')).toThrow()
     })
 
     it('treats empty / whitespace-only as missing', () => {
-      process.env.SUPABASE_JWT_SECRET = '   '
-      expect(() => requireEnv('SUPABASE_JWT_SECRET')).toThrow()
+      process.env.SUPABASE_SERVICE_ROLE_KEY = '   '
+      expect(() => requireEnv('SUPABASE_SERVICE_ROLE_KEY')).toThrow()
     })
   })
 
@@ -52,7 +52,6 @@ describe('env', () => {
       NEXT_PUBLIC_SUPABASE_URL: 'https://x.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon',
       SUPABASE_SERVICE_ROLE_KEY: 'svc',
-      SUPABASE_JWT_SECRET: 'jwt',
       GOOGLE_TOKEN_ENC_KEY: 'enc',
     }
 
@@ -62,8 +61,8 @@ describe('env', () => {
 
     it('rejects a placeholder value and names the offending key', () => {
       expect(() =>
-        validateServerEnv({ ...full, SUPABASE_JWT_SECRET: 'placeholder' } as NodeJS.ProcessEnv),
-      ).toThrow(/SUPABASE_JWT_SECRET/)
+        validateServerEnv({ ...full, SUPABASE_SERVICE_ROLE_KEY: 'placeholder' } as NodeJS.ProcessEnv),
+      ).toThrow(/SUPABASE_SERVICE_ROLE_KEY/)
     })
 
     it('rejects a missing required key', () => {

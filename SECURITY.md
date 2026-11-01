@@ -15,7 +15,7 @@ Run through this before putting an install on the internet.
 - Turn off **Realtime > Settings > Allow public access**. Notifications use private channels, so nothing needs public ones.
 - Keep email confirmation on, or turn off sign-ups, unless you trust everyone who can reach the URL. Signing up gives an account on your install.
 - Use a password rule stronger than the 6-character local default.
-- The service role key and `SUPABASE_JWT_SECRET` can each act as any user. Keep them server-side only.
+- The service role key can act as any user. Keep it server-side only.
 
 **App**
 - Set `NEXT_PUBLIC_APP_URL` to your real URL. Redirects and Google callbacks depend on it.
@@ -30,7 +30,7 @@ Run through this before putting an install on the internet.
 
 - Row Level Security is on for every table. Composite foreign keys stop a row from pointing at another user's Google account or calendar.
 - The public anon key has no table or function access. Public booking goes through API routes that enforce availability and rate limits.
-- API-key requests run as the key's user through a 120-second JWT, not the service role.
+- API-key requests run as the key's user through a real Auth session, encrypted at rest, not the service role.
 - Google tokens are encrypted with AES-256-GCM before they reach the database.
 - The MCP server validates every tool call against its schema, encodes path segments, and logs one line per call to stderr, without arguments.
 

@@ -25,7 +25,6 @@ export const REQUIRED_SERVER_ENV = [
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
-  'SUPABASE_JWT_SECRET',
   'GOOGLE_TOKEN_ENC_KEY',
 ] as const
 
@@ -90,7 +89,6 @@ export const serverEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: nonPlaceholder,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: nonPlaceholder,
   SUPABASE_SERVICE_ROLE_KEY: nonPlaceholder,
-  SUPABASE_JWT_SECRET: nonPlaceholder,
   GOOGLE_TOKEN_ENC_KEY: nonPlaceholder,
 })
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '../supabase/server'
 import { authenticateApiKey } from './api-key'
-import { mintUserJwt, createUserScopedClient } from './user-jwt'
+import { createUserScopedClient } from './user-jwt'
+import { getApiKeyAccessToken } from './api-key-session'
 import { rateLimitAsync } from '../rate-limit'
 
 export interface AuthResult {
@@ -25,15 +26,21 @@ export async function authenticate(
   request: NextRequest
 ): Promise<AuthResult | NextResponse> {
   // 1. API-key auth. The key is verified (SHA-256 + timingSafeEqual against
-  //    api_keys). The request then runs under RLS *as the key's user* via a
-  //    short-lived HS256 JWT on an anon-key client — never the service role.
+  //    api_keys). The request then runs under RLS *as the key's user* with a real
+  //    Auth session held for that key, never the service role.
   const apiKey = await authenticateApiKey(request)
   if (apiKey) {
     const limited = await enforceApiKeyRateLimit(request, apiKey.keyId)
     if (limited) return limited
 
-    const jwt = await mintUserJwt(apiKey.userId)
-    const supabase = createUserScopedClient(jwt) as AuthResult['supabase']
+    let accessToken: string
+    try {
+      accessToken = await getApiKeyAccessToken(apiKey.keyId, apiKey.userId)
+    } catch (err) {
+      console.warn('[auth] API key rejected: no session', { keyId: apiKey.keyId, err })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const supabase = createUserScopedClient(accessToken) as AuthResult['supabase']
     return { userId: apiKey.userId, supabase }
   }
 
