@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
 import type { GoogleEvent, GoogleEventInsert, GoogleEventWrite, GoogleEventsPage } from './types'
+import { googleApiBase, googleTokenUrl } from '../external-urls'
 
 interface GoogleTokens {
   access_token: string
@@ -38,7 +39,7 @@ async function refreshTokenIfNeeded(
 
   const refreshToken = decryptToken(tokens.refresh_token)
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetch(googleTokenUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -91,7 +92,7 @@ export async function googleCalendarRequest(
   options: RequestInit = {}
 ) {
   const response = await fetch(
-    `https://www.googleapis.com/calendar/v3${path}`,
+    `${googleApiBase()}/calendar/v3${path}`,
     {
       ...options,
       headers: {
@@ -163,7 +164,7 @@ export async function deleteGoogleEvent(
 ) {
   const accessToken = await getGoogleAccessToken(accountId)
   const response = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+    `${googleApiBase()}/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
     {
       method: 'DELETE',
       headers: {

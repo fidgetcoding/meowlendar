@@ -6,6 +6,7 @@
 // → log once and return no busy periods (never throw, never block booking).
 import { getGoogleAccessToken } from './calendar'
 import type { BusyPeriod } from '../booking/availability'
+import { googleApiBase } from '../external-urls'
 
 let warned = false
 function warnOnce(context: string, err: unknown): void {
@@ -34,7 +35,7 @@ export async function getGoogleBusyPeriods(opts: {
 
   try {
     const accessToken = await getGoogleAccessToken(opts.googleAccountId)
-    const res = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+    const res = await fetch(`${googleApiBase()}/calendar/v3/freeBusy`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,

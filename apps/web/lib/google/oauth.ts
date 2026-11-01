@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
+import { googleApiBase, googleAuthUrl, googleRevokeUrl, googleTokenUrl } from '../external-urls'
 
 function getServiceClient() {
   return createServerClient(
@@ -42,7 +43,7 @@ export function getGoogleOAuthUrl(
     state: signedState,
   })
 
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  return `${googleAuthUrl()}?${params.toString()}`
 }
 
 /**
@@ -58,7 +59,7 @@ export async function exchangeCodeForTokens(
   expires_in: number
   email: string
 }> {
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+  const tokenResponse = await fetch(googleTokenUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -86,7 +87,7 @@ export async function exchangeCodeForTokens(
 
   // Fetch the Google account email
   const userinfoResponse = await fetch(
-    'https://www.googleapis.com/oauth2/v2/userinfo',
+    `${googleApiBase()}/oauth2/v2/userinfo`,
     {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     }
@@ -204,7 +205,7 @@ export async function saveGoogleAccount(
 
   // Fetch the user's calendar list from Google
   const calendarListResponse = await fetch(
-    'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+    `${googleApiBase()}/calendar/v3/users/me/calendarList`,
     {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     }
@@ -275,7 +276,7 @@ export async function disconnectGoogleAccount(
     try {
       const tokenToRevoke = decryptToken(storedToken)
       await fetch(
-        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`,
+        `${googleRevokeUrl()}?token=${encodeURIComponent(tokenToRevoke)}`,
         { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
       )
     } catch {

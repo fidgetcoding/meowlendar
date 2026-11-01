@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { requireEnv, optionalEnv } from '../env'
 import { getGoogleAccessToken, watchGoogleCalendar } from './calendar'
+import { googleApiBase } from '../external-urls'
 
 // ---------------------------------------------------------------------------
 // Google Calendar push-webhook registration.
@@ -68,7 +69,7 @@ export async function registerAccountWebhook(accountId: string): Promise<boolean
   if (account.webhook_channel_id) {
     try {
       const accessToken = await getGoogleAccessToken(accountId)
-      await fetch('https://www.googleapis.com/calendar/v3/channels/stop', {
+      await fetch(`${googleApiBase()}/calendar/v3/channels/stop`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,

@@ -1,4 +1,5 @@
 import type { NotificationPayload } from './types'
+import { telegramApiBase } from '../external-urls'
 
 export async function sendTelegramNotification(
   botToken: string,
@@ -9,7 +10,7 @@ export async function sendTelegramNotification(
 
   try {
     const res = await fetch(
-      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      `${telegramApiBase()}/bot${botToken}/sendMessage`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

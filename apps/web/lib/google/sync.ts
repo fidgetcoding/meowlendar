@@ -9,6 +9,7 @@ import {
   deleteGoogleEvent,
 } from './calendar'
 import { requireEnv } from '../env'
+import { googleApiBase } from '../external-urls'
 import type {
   GoogleEvent,
   GoogleEventAttendee,
@@ -590,7 +591,7 @@ async function updateGoogleEventWithEtag(
   }
 
   const response = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+    `${googleApiBase()}/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
     {
       method: 'PATCH',
       headers,
