@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { rateLimitAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/client-ip'
+import { classifyHost } from '@/lib/hosts'
 import {
   timeInTimezoneToUtc,
   addDaysStr,
@@ -55,6 +56,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const link = await resolveSlug(supabase, slug)
   if (!link) {
+    return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
+  }
+
+  // On a booking subdomain the link has to belong to that subdomain's owner.
+  const host = classifyHost(request.headers.get('host'))
+  const owner = (link.profiles as { username?: string }).username
+  if (host.kind === 'booking' && owner !== host.username) {
     return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
   }
 

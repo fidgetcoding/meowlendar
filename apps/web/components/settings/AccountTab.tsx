@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { SettingsSection } from './SettingsSection'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@poolendar/types'
+import { bookingSubdomainUrl } from '@/lib/hosts'
 
 interface AccountTabProps {
   profile: Profile | null
@@ -103,7 +104,9 @@ export function AccountTab({
         <p className="text-xs text-[var(--muted)]">
           Your booking pages live at{' '}
           <span className="text-[var(--accent)]">
-            {typeof window !== 'undefined' ? window.location.origin : ''}/book/your-link
+            {bookingSubdomainUrl(username || 'username') ??
+              `${typeof window !== 'undefined' ? window.location.origin : ''}/book`}
+            /your-link
           </span>
         </p>
         <Input

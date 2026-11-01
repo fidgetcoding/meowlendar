@@ -1,56 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/middleware'
+import { classifyHost } from '@/lib/hosts'
 
-/** The host this deployment serves the app on, from NEXT_PUBLIC_APP_URL. */
-function configuredAppHost(): string | null {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_APP_URL ?? '').hostname.toLowerCase()
-  } catch {
-    return null
-  }
+// Paths a booking subdomain serves as they are. Everything else on that host is
+// either a booking slug or does not exist, so the app itself never answers there.
+function isBookingHostPassthrough(pathname: string): boolean {
+  return (
+    pathname.startsWith('/api/booking/') ||
+    pathname.startsWith('/book/') ||
+    pathname.startsWith('/u/') ||
+    pathname.startsWith('/_next/') ||
+    pathname === '/manifest.json' ||
+    pathname === '/sw.js' ||
+    pathname.startsWith('/favicon')
+  )
 }
 
+const SLUG_PATH = /^\/[A-Za-z0-9_-]+$/
+
 export async function middleware(request: NextRequest) {
-  const hostname = request.headers.get('host') || ''
-  // Strip the port before any host analysis. Leaving it on made `localhost:3000`
-  // need a startsWith hack, and it never saved `127.0.0.1:3000` at all — the
-  // IP's own dots satisfied the old `hostname.includes('.')` test, so every
-  // loopback-by-IP request was misread as a booking subdomain and rewritten
-  // into a 404. Playwright targets 127.0.0.1, so that took the whole E2E suite
-  // down with it.
-  const host = (hostname.split(':')[0] ?? '').toLowerCase()
-  const labels = host.split('.')
-  const subdomain = labels[0] ?? ''
+  const host = classifyHost(request.headers.get('host'))
 
-  // An IP literal is a host, never a booking namespace.
-  const isIpLiteral = /^\d+(\.\d+)*$/.test(host)
-  // A booking namespace needs an actual subdomain label in front of a
-  // registrable domain: `nate.poolendar.com` yes, `poolendar.com` and bare
-  // `localhost` no. `nate.localhost` is allowed so subdomains stay testable
-  // locally.
-  const hasSubdomainLabel =
-    labels.length > 2 || (labels.length === 2 && labels[1] === 'localhost')
+  if (host.kind === 'rejected') {
+    return new NextResponse('Misdirected request', { status: 421 })
+  }
 
-  // A self-hosted app on `calendar.example.com` or `my-app.vercel.app` has three
-  // labels too, and must not be swallowed by the booking rewrite below.
-  const isDeploymentHost = host === configuredAppHost() || host.endsWith('.vercel.app')
+  if (host.kind === 'booking') {
+    const { pathname } = request.nextUrl
+    if (isBookingHostPassthrough(pathname)) return NextResponse.next()
 
-  // Subdomain routing for booking pages
-  // If subdomain is not the app itself, treat it as a booking page namespace
-  const isBookingSubdomain =
-    !isIpLiteral &&
-    !isDeploymentHost &&
-    hasSubdomainLabel &&
-    subdomain !== 'app' &&
-    subdomain !== 'www' &&
-    subdomain !== 'poolendar'
-
-  if (isBookingSubdomain) {
     const url = request.nextUrl.clone()
-    const bookingPath = url.pathname === '/' ? '' : url.pathname
-    url.pathname = `/(booking)${bookingPath}`
+    if (pathname === '/') {
+      url.pathname = `/u/${host.username}`
+    } else if (SLUG_PATH.test(pathname)) {
+      url.pathname = `/book${pathname}`
+    } else {
+      return new NextResponse('Not found', { status: 404 })
+    }
     const response = NextResponse.rewrite(url)
-    response.headers.set('x-booking-username', subdomain)
+    response.headers.set('x-booking-username', host.username)
     return response
   }
 
@@ -71,6 +59,7 @@ export async function middleware(request: NextRequest) {
     // Path-based booking pages (the /book/{slug} fallback the UI copies) are
     // public — external visitors have no session.
     pathname.startsWith('/book/') ||
+    pathname.startsWith('/u/') ||
     pathname.startsWith('/api/booking/availability') ||
     pathname.startsWith('/api/booking/book') ||
     pathname.startsWith('/api/webhooks') ||

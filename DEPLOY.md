@@ -122,7 +122,18 @@ Any host that runs Next.js works. On Vercel:
 4. Set `NEXT_PUBLIC_APP_URL` to your final URL, with no trailing slash. It is built into the app, so redeploy after changing it.
 5. Add the hosted redirect URI from section 2 and the Supabase URLs from section 4.
 
-Booking pages are served at `/book/<slug>`. Subdomain booking pages (`you.example.com`) do not work, so no wildcard DNS is needed. Each slug is unique across the install.
+Booking pages are served at `/book/<slug>`. Each slug is unique across the install.
+
+### Subdomain booking pages (optional)
+
+`you.example.com/30min` opens the same page as `/book/30min`, and `you.example.com` lists your public links. `you` is the username in **Settings > Profile**, and a link only opens under its owner's name. To turn it on:
+
+1. Point a wildcard at your host: a `CNAME` for `*.example.com`. On Vercel, also add `*.example.com` under **Project Settings > Domains**, which requires the domain to use Vercel's nameservers.
+2. The booking domain defaults to your `NEXT_PUBLIC_APP_URL` host, with a leading `app.` or `www.` removed. To use a different one, set `BOOKING_ROOT_DOMAIN`.
+
+**The app refuses any Host header it doesn't recognise with a 421.** It accepts your app host, the booking domain and its subdomains. On a server behind a proxy, the proxy must pass the original host (`proxy_set_header Host $host` on nginx). List any other names, such as an internal health check, in `ALLOWED_HOSTS`.
+
+Locally, `you.localhost:3000/30min` works with no DNS.
 
 Read `SECURITY.md` before exposing an install to the internet. Security headers are set in `apps/web/next.config.js`, so they apply on any host. `NEXT_PUBLIC_SUPABASE_URL` must be set at build time for the Content Security Policy to allow your Supabase project.
 
@@ -146,6 +157,8 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | for push alerts | `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | for push alerts | Same command |
 | `VAPID_SUBJECT` | for push alerts | `mailto:you@example.com` |
+| `BOOKING_ROOT_DOMAIN` | no | Domain for subdomain booking pages. Defaults to the app host |
+| `ALLOWED_HOSTS` | no | Comma-separated extra hosts the app answers on |
 | `TRUSTED_IP_HEADER` | behind a non-Vercel proxy | Header your proxy overwrites, such as `x-real-ip`. See `SECURITY.md` |
 
 ## 7. Connect the MCP

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { SEED } from './seed'
 
 // External booking happy path (#57b). Visits the path-based public booking page
@@ -14,6 +14,32 @@ test.describe('external booking page (#57b)', () => {
 
   test('book a slot end-to-end on /book/{slug}', async ({ page }) => {
     await page.goto(`/book/${SEED.bookingSlug}`)
+    await bookSlot(page, 0)
+  })
+
+  test('book a slot end-to-end on a booking subdomain', async ({ page, baseURL }) => {
+    const base = new URL(baseURL!)
+    test.skip(base.hostname !== 'localhost', 'subdomains need a localhost base URL')
+
+    await page.goto(`${base.protocol}//${SEED_USERNAME}.localhost:${base.port}/${SEED.bookingSlug}`)
+    // A different slot from the test above, which may run at the same time.
+    await bookSlot(page, 5)
+  })
+
+  test('a booking subdomain lists the public links', async ({ page, baseURL }) => {
+    const base = new URL(baseURL!)
+    test.skip(base.hostname !== 'localhost', 'subdomains need a localhost base URL')
+
+    await page.goto(`${base.protocol}//${SEED_USERNAME}.localhost:${base.port}/`)
+    await expect(page.getByRole('link', { name: new RegExp(SEED.bookingLinkName) })).toBeVisible()
+  })
+})
+
+// The seed user's username comes from the part of the email before the @.
+const SEED_USERNAME = 'e2e'
+
+async function bookSlot(page: Page, slotIndex: number) {
+  {
 
     // The link resolved (not the "Page Not Found" error state): the link name
     // and duration render in the header.
@@ -49,7 +75,7 @@ test.describe('external booking page (#57b)', () => {
     await dayButton.click()
 
     // Slots load asynchronously; pick the first time-slot button (e.g. "9:00 AM").
-    const slotButton = page.getByRole('button', { name: /^\d{1,2}:\d{2}(\s?[AP]M)?$/i }).first()
+    const slotButton = page.getByRole('button', { name: /^\d{1,2}:\d{2}(\s?[AP]M)?$/i }).nth(slotIndex)
     await slotButton.waitFor({ state: 'visible' })
     await slotButton.click()
 
@@ -62,5 +88,5 @@ test.describe('external booking page (#57b)', () => {
     // Confirmation screen (auto-approve link → immediately confirmed).
     await expect(page.getByRole('heading', { name: /booking confirmed/i })).toBeVisible()
     await expect(page.getByRole('link', { name: /add to google calendar/i })).toBeVisible()
-  })
-})
+  }
+}

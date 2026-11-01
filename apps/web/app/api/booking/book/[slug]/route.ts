@@ -13,6 +13,7 @@ import { createServerClient } from '@supabase/ssr'
 import { bookSlotSchema } from '@poolendar/validators'
 import { rateLimitAsync } from '@/lib/rate-limit'
 import { clientIp } from '@/lib/client-ip'
+import { classifyHost } from '@/lib/hosts'
 import {
   computeBlockedIntervals,
   hasConflict,
@@ -91,13 +92,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const { data: link, error: linkError } = await supabase
     .from('booking_links')
-    .select('*')
+    .select('*, profiles!inner(username)')
     .eq('slug', slug)
     .eq('is_public', true)
     .limit(1)
     .single()
 
   if (linkError || !link) {
+    return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
+  }
+
+  // On a booking subdomain the link has to belong to that subdomain's owner.
+  const host = classifyHost(request.headers.get('host'))
+  const owner = (link.profiles as { username?: string }).username
+  if (host.kind === 'booking' && owner !== host.username) {
     return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
   }
 

@@ -48,8 +48,17 @@ const ALL_DAY_AVAILABILITY = [
   'sunday',
 ].map((day) => ({ day, start: '09:00', end: '17:00' }))
 
-/** Read the Supabase URL + anon key from the web app's gitignored .env.local. */
+/**
+ * The Supabase URL + public key, from the environment or else the web app's
+ * gitignored .env.local.
+ */
 function readSupabaseEnv(): { url: string; anonKey: string } {
+  const fromEnv = {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  }
+  if (fromEnv.url && fromEnv.anonKey) return { url: fromEnv.url, anonKey: fromEnv.anonKey }
+
   const envPath = join(__dirname, '..', 'apps', 'web', '.env.local')
   const raw = readFileSync(envPath, 'utf8')
   const get = (key: string) => {
@@ -58,8 +67,8 @@ function readSupabaseEnv(): { url: string; anonKey: string } {
     return line.slice(key.length + 1).trim()
   }
   return {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL || get('NEXT_PUBLIC_SUPABASE_URL'),
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || get('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    url: get('NEXT_PUBLIC_SUPABASE_URL'),
+    anonKey: get('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
   }
 }
 

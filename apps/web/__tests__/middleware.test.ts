@@ -41,6 +41,9 @@ describe('middleware', () => {
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+    process.env.NEXT_PUBLIC_APP_URL = 'https://app.poolendar.com'
+    delete process.env.VERCEL
+    delete process.env.BOOKING_ROOT_DOMAIN
 
     const mod = await import('../middleware')
     middleware = mod.middleware
@@ -49,7 +52,7 @@ describe('middleware', () => {
   // ── Booking subdomain detection ─────────────────────────────────────────
 
   describe('booking subdomain routing', () => {
-    it('rewrites nate.poolendar.com to /(booking)/ path', async () => {
+    it('rewrites nate.poolendar.com to the host landing page', async () => {
       const request = createRequest('/', 'nate.poolendar.com')
       const response = await middleware(request)
 
@@ -58,7 +61,7 @@ describe('middleware', () => {
       expect(response.headers.get('x-booking-username')).toBe('nate')
     })
 
-    it('rewrites nate.poolendar.com/30min to /(booking)/30min', async () => {
+    it('rewrites nate.poolendar.com/30min to the booking page', async () => {
       const request = createRequest('/30min', 'nate.poolendar.com')
       const response = await middleware(request)
 
@@ -68,15 +71,28 @@ describe('middleware', () => {
     it('does NOT rewrite the host set in NEXT_PUBLIC_APP_URL', async () => {
       process.env.NEXT_PUBLIC_APP_URL = 'https://calendar.example.com'
       mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
-      try {
-        const response = await middleware(createRequest('/login', 'calendar.example.com'))
-        expect(response.headers.get('x-booking-username')).toBeNull()
-      } finally {
-        delete process.env.NEXT_PUBLIC_APP_URL
-      }
+      const response = await middleware(createRequest('/login', 'calendar.example.com'))
+      expect(response.status).not.toBe(421)
+      expect(response.headers.get('x-booking-username')).toBeNull()
+    })
+
+    it('refuses a spoofed Host header', async () => {
+      const response = await middleware(createRequest('/login', 'evil.example.net'))
+      expect(response.status).toBe(421)
+    })
+
+    it('serves only booking paths on a booking subdomain', async () => {
+      const api = await middleware(createRequest('/api/tasks', 'nate.poolendar.com'))
+      expect(api.status).toBe(404)
+      const nested = await middleware(createRequest('/settings/profile', 'nate.poolendar.com'))
+      expect(nested.status).toBe(404)
+      const booking = await middleware(createRequest('/api/booking/availability/x', 'nate.poolendar.com'))
+      expect(booking.status).toBe(200)
+      expect(mockGetUser).not.toHaveBeenCalled()
     })
 
     it('does NOT rewrite a vercel.app deployment host', async () => {
+      process.env.VERCEL = '1'
       mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
       const response = await middleware(createRequest('/login', 'my-meowlendar.vercel.app'))
       expect(response.headers.get('x-booking-username')).toBeNull()
