@@ -250,7 +250,7 @@ describe('POST /api/booking-links', () => {
     mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase })
 
     const { POST } = await import('../route')
-    const body = { ...VALID_CREATE, google_account_id: '00000000-0000-0000-0000-000000000001' }
+    const body = { ...VALID_CREATE, google_account_id: '00000000-0000-4000-8000-000000000001' }
     const res = await POST(makeRequest('POST', body))
 
     expect(res.status).toBe(404)

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { partialUpdate } from './partial'
 
 export const createRoutineSchema = z.object({
   title: z.string().min(1).max(500),
@@ -14,4 +15,4 @@ export const createRoutineSchema = z.object({
   reminders: z.array(z.object({ minutes_before: z.number().int().positive() })).max(20).default([]),
 })
 
-export const updateRoutineSchema = createRoutineSchema.partial()
+export const updateRoutineSchema = partialUpdate(createRoutineSchema)

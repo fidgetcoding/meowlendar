@@ -6,7 +6,7 @@ const undoSchema = z.object({
   action_type: z.enum(['create', 'update', 'delete']),
   entity_type: z.enum(['event', 'task', 'routine', 'booking_link', 'tag', 'schedule']),
   entity_id: z.string().uuid(),
-  previous_state: z.record(z.any()).nullable(),
+  previous_state: z.record(z.string(), z.any()).nullable(),
 })
 
 const tableMap: Record<string, string> = {

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { partialUpdate } from './partial'
 
 const attendeeSchema = z.object({
   email: z.string().email(),
@@ -27,7 +28,7 @@ export const createEventSchema = z.object({
   reminders: z.array(reminderSchema).max(20).default([]),
 })
 
-export const updateEventSchema = createEventSchema.partial().extend({
+export const updateEventSchema = partialUpdate(createEventSchema).extend({
   // Recurrence edit scope — controls which occurrences are affected
   // TODO: implement occurrence-level edits when recurrence_id splitting is built
   scope: z.enum(['single', 'future', 'all', 'custom']).optional(),

@@ -78,10 +78,10 @@ export function isAuthError(result: AuthResult | NextResponse): result is NextRe
  * 422 (Unprocessable Entity), distinct from a genuinely malformed request body
  * (unparseable JSON), which the routes still return as 400.
  */
-export function validationError(issues: { path: (string | number)[]; message: string }[]) {
+export function validationError(issues: readonly { path: PropertyKey[]; message: string }[]) {
   const details: Record<string, string[]> = {}
   for (const issue of issues) {
-    const key = issue.path.join('.') || '_root'
+    const key = issue.path.map(String).join('.') || '_root'
     if (!details[key]) details[key] = []
     details[key].push(issue.message)
   }

@@ -6,7 +6,7 @@ const updateProfileSchema = z.object({
   display_name: z.string().max(200).nullable().optional(),
   company: z.string().max(200).nullable().optional(),
   avatar_url: z.string().url().nullable().optional(),
-  settings: z.record(z.unknown()).refine(
+  settings: z.record(z.string(), z.unknown()).refine(
     (obj) => JSON.stringify(obj).length <= 10_000,
     { message: 'Settings payload must be under 10KB' }
   ).optional(),

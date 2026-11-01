@@ -29,3 +29,4 @@ export {
 } from './tag'
 export { convertSchema } from './convert'
 export { searchSchema } from './search'
+export * from './partial'

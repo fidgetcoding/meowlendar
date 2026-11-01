@@ -13,8 +13,6 @@ const createScheduleSchema = z.object({
   time_blocks: z.array(timeBlockSchema).default([]),
 })
 
-const updateScheduleSchema = createScheduleSchema.partial()
-
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
   if (isAuthError(auth)) return auth

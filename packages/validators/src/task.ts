@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { partialUpdate } from './partial'
 
 export const createTaskSchema = z.object({
   title: z.string().min(1).max(500),
@@ -25,7 +26,7 @@ export const createTaskSchema = z.object({
   })).max(100).optional(),
 })
 
-export const updateTaskSchema = createTaskSchema.partial()
+export const updateTaskSchema = partialUpdate(createTaskSchema)
 
 // A move can change any of column (status), board, or intra-column position.
 // All three are optional so a board-only or position-only reorder is valid
