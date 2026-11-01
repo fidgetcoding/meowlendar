@@ -6,6 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { PoolendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from './types.js'
+import { validateArgs } from './validate.js'
 import {
   getCalendarToolDefinitions,
   getCalendarToolHandlers,
@@ -104,6 +105,12 @@ function getAllToolHandlers(): Record<string, ToolHandler> {
 
 const toolDefinitions = getAllToolDefinitions()
 const toolHandlers = getAllToolHandlers()
+const toolSchemas = new Map(toolDefinitions.map((t) => [t.name, t.inputSchema]))
+
+/** One JSON line per call on stderr (stdout carries the protocol). Never logs arguments. */
+function auditLog(tool: string, outcome: 'ok' | 'invalid' | 'error', startedAt: number) {
+  console.error(JSON.stringify({ event: 'mcp_tool_call', tool, outcome, ms: Date.now() - startedAt }))
+}
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: toolDefinitions,
@@ -128,12 +135,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
+  const startedAt = Date.now()
+  const problems = validateArgs(args ?? {}, toolSchemas.get(name) ?? {})
+  if (problems.length > 0) {
+    auditLog(name, 'invalid', startedAt)
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ error: 'invalid_arguments', problems }, null, 2),
+        },
+      ],
+      isError: true,
+    }
+  }
+
   try {
     const result = await handler(args ?? {})
+    auditLog(name, 'ok', startedAt)
     return {
       content: [{ type: 'text' as const, text: result }],
     }
   } catch (err) {
+    auditLog(name, 'error', startedAt)
     const message =
       err instanceof Error ? err.message : 'An unknown error occurred'
     const status =

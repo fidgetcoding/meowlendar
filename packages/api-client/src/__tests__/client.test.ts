@@ -331,3 +331,30 @@ describe('PoolendarClient (api-client package)', () => {
     }
   })
 })
+
+describe('path segments and empty responses', () => {
+  const client = new PoolendarClient({ baseUrl: 'http://x', apiKey: 'pk_test' })
+
+  function stubFetch(status: number, body: string | null) {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status }))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('encodes ids so they cannot reach another route', async () => {
+    const fetchMock = stubFetch(200, '{}')
+    await client.getTask('../api-keys/abc')
+    expect(fetchMock.mock.calls[0]![0]).toBe('http://x/api/tasks/..%2Fapi-keys%2Fabc')
+  })
+
+  it.each(['.', '..', ''])('refuses the dot segment %j', async (id) => {
+    stubFetch(200, '{}')
+    await expect(client.getTask(id)).rejects.toThrow(/Invalid path segment/)
+  })
+
+  it('resolves a 204 without parsing a body', async () => {
+    stubFetch(204, null)
+    await expect(client.deleteTask('abc')).resolves.toBeUndefined()
+  })
+})
+
