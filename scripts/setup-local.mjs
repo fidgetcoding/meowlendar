@@ -62,7 +62,7 @@ function startSupabase() {
 }
 
 const [major] = process.versions.node.split('.').map(Number)
-if (major < 20) fail(`Node 20 or newer is required, found ${process.versions.node}.`)
+if (major < 22) fail(`Node 22 or newer is required, found ${process.versions.node}.`)
 console.log(`ok    node ${process.versions.node}`)
 check('pnpm', 'pnpm', ['--version'], 'Install it with: corepack enable')
 check('supabase CLI', 'supabase', ['--version'], 'See https://supabase.com/docs/guides/local-development/cli/getting-started')

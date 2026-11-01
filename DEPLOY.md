@@ -6,7 +6,7 @@ Meowlendar was renamed from Poolendar. Package names (`@poolendar/*`), the `pool
 
 ## 1. Run it locally
 
-Needs Node 20+, pnpm, the Supabase CLI, and a running Docker (Docker Desktop or `colima start`).
+Needs Node 22+, pnpm, the Supabase CLI, and a running Docker (Docker Desktop or `colima start`).
 
 ```bash
 git clone https://github.com/fidgetcoding/meowlendar
