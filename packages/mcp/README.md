@@ -8,34 +8,30 @@ straight onto the calendar grid instead of parking it in an inbox.
 
 ## Install
 
+The package is not published to npm, so build it from your clone:
+
 ```bash
-claude mcp add poolendar -- npx -y poolendar-mcp
+pnpm --filter poolendar-mcp build
 ```
 
-Then set two environment variables so the server knows which Poolendar to talk
-to and how to authenticate:
-
-| Variable            | Required | Default                 | What it is                                              |
-| ------------------- | -------- | ----------------------- | ------------------------------------------------------- |
-| `POOLENDAR_API_KEY` | yes      | —                       | An API key from **Settings → Profile** (`pk_…`).        |
-| `POOLENDAR_API_URL` | no       | `http://localhost:3000` | Base URL of your Poolendar instance.                    |
-
-With Claude Code you can pass them inline:
+Create an API key in the app under **Settings > API Keys**, then register the
+server, using the absolute path to your clone:
 
 ```bash
-claude mcp add poolendar \
+claude mcp add meowlendar -s user \
   --env POOLENDAR_API_KEY=pk_your_key_here \
-  --env POOLENDAR_API_URL=https://your-poolendar.example.com \
-  -- npx -y poolendar-mcp
+  --env POOLENDAR_API_URL=http://localhost:3000 \
+  -- node /absolute/path/to/meowlendar/packages/mcp/dist/index.js
 ```
 
-Or run the binary directly:
-
-```bash
-POOLENDAR_API_KEY=pk_... POOLENDAR_API_URL=http://localhost:3000 npx poolendar-mcp
-```
+| Variable            | Required | Default                 | What it is                                       |
+| ------------------- | -------- | ----------------------- | ------------------------------------------------ |
+| `POOLENDAR_API_KEY` | yes      | none                    | An API key from **Settings > API Keys** (`pk_...`). |
+| `POOLENDAR_API_URL` | no       | `http://localhost:3000` | Base URL of your instance.                       |
 
 The server speaks stdio and exits immediately if `POOLENDAR_API_KEY` is missing.
+The app must be running for the tools to work. `create_event` needs a calendar,
+and calendars come from a connected Google account. `create_task` works without one.
 
 ## What it can do
 
