@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { rateLimitAsync } from '@/lib/rate-limit'
+import { clientIp } from '@/lib/client-ip'
 import {
   timeInTimezoneToUtc,
   addDaysStr,
@@ -47,14 +48,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const supabase = getServiceClient()
   const { slug } = await params
 
-  const clientIp = request.headers.get('x-forwarded-for') ?? 'unknown'
-  if (!(await rateLimitAsync(`booking-avail:${clientIp}:${slug}`, 30, 60000))) {
+  const ip = clientIp(request)
+  if (!(await rateLimitAsync(`booking-avail-ip:${ip}`, 120, 60000))) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
   const link = await resolveSlug(supabase, slug)
   if (!link) {
     return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
+  }
+
+  // Keyed on the link id, after the lookup, so unknown slugs can't create rows.
+  if (!(await rateLimitAsync(`booking-avail:${ip}:${link.id}`, 30, 60000))) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
   const { searchParams } = request.nextUrl
@@ -69,9 +75,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
     const settings = (profile.settings ?? {}) as Record<string, unknown>
 
-    const { profiles: _p, ...bookingLink } = link
+    // Named fields only. This response is public, so it must not carry user_id,
+    // google_account_id, or anything else the booking page doesn't render.
     return NextResponse.json({
-      booking_link: bookingLink,
+      booking_link: {
+        slug: link.slug,
+        name: link.name,
+        duration_minutes: link.duration_minutes,
+        availability: link.availability,
+        timezone: link.timezone,
+        location: link.location,
+        notes: link.notes,
+        requires_approval: link.requires_approval,
+      },
       host: {
         display_name: profile.display_name || 'Host',
         avatar_url: profile.avatar_url,

@@ -21,7 +21,8 @@ export function rateLimit(key: string, limit: number, windowMs: number): boolean
 
 // ---------------------------------------------------------------------------
 // Supabase-backed sliding window counter.
-// Uses the `rate_limit_entries` table (migration 006).
+// Uses the `rate_limit_entries` table (migration 006). Expired rows are removed
+// by pruneRateLimitEntries, which the sync-poll cron calls.
 // ---------------------------------------------------------------------------
 function getServiceClient() {
   return createServerClient(
@@ -67,6 +68,23 @@ export async function rateLimitAsync(
     // completely unprotected during transient outages.
     console.warn('[rate-limit] Supabase call failed, falling back to in-memory', err)
     return rateLimit(key, limit, windowMs)
+  }
+}
+
+/** Longest window any caller uses is an hour, so a day-old row is dead. */
+const RATE_LIMIT_RETENTION_MS = 24 * 60 * 60 * 1000
+
+/** Delete expired counters. Called from the sync-poll cron; never throws. */
+export async function pruneRateLimitEntries(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - RATE_LIMIT_RETENTION_MS).toISOString()
+    const { error } = await getServiceClient()
+      .from('rate_limit_entries')
+      .delete()
+      .lt('window_start', cutoff)
+    if (error) throw error
+  } catch (err) {
+    console.warn('[rate-limit] Failed to prune old entries', err)
   }
 }
 

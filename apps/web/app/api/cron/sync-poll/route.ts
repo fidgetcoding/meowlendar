@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { pullChanges, retryPendingPushEvents } from '@/lib/google/sync'
 import { verifyCronSecret } from '@/lib/auth/cron'
+import { pruneRateLimitEntries } from '@/lib/rate-limit'
 import { requireEnv } from '@/lib/env'
 
 function getServiceClient() {
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     // were just connected and haven't synced yet).
     const { data: staleAccounts, error: queryError } = await supabase
       .from('google_accounts')
-      .select('id, email, last_synced_at')
+      .select('id, last_synced_at')
       .or(`last_synced_at.is.null,last_synced_at.lt.${staleThreshold}`)
 
     if (queryError) {
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
         await pullChanges(account.id)
         processed++
       } catch (err) {
-        const msg = `Account ${account.email}: ${err instanceof Error ? err.message : 'unknown error'}`
+        const msg = `Account ${account.id}: ${err instanceof Error ? err.message : 'unknown error'}`
         errors.push(msg)
         console.error('Sync poll failed:', msg)
       }
@@ -62,6 +63,8 @@ export async function GET(request: NextRequest) {
     // Re-push events stranded in pending_push (events/route.ts leaves them
     // there on inline Google-write failure; nothing else retries them).
     const retry = await retryPendingPushEvents()
+
+    await pruneRateLimitEntries()
 
     return NextResponse.json({
       success: true,

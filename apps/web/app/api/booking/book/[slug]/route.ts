@@ -7,10 +7,12 @@
 // CLOSED — if we can't verify the slot is free, we refuse the booking.
 // requires_approval links land as 'pending': no Google event, no booker
 // confirmation until the host approves (spec #53, #57a).
+import { createHash } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { bookSlotSchema } from '@poolendar/validators'
 import { rateLimitAsync } from '@/lib/rate-limit'
+import { clientIp } from '@/lib/client-ip'
 import {
   computeBlockedIntervals,
   hasConflict,
@@ -27,6 +29,10 @@ import {
 import { createBookingGoogleEvent } from '@/lib/booking/google-event'
 
 type RouteParams = { params: Promise<{ slug: string }> }
+
+const HOUR_MS = 60 * 60 * 1000
+const BOOKINGS_PER_LINK_PER_HOUR = 60
+const BOOKINGS_PER_EMAIL_PER_HOUR = 10
 
 function getServiceClient() {
   return createServerClient(
@@ -78,8 +84,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const supabase = getServiceClient()
   const { slug } = await params
 
-  const clientIp = request.headers.get('x-forwarded-for') ?? 'unknown'
-  if (!(await rateLimitAsync(`book:${clientIp}:${slug}`, 5, 60000))) {
+  const ip = clientIp(request)
+  if (!(await rateLimitAsync(`book-ip:${ip}`, 30, 60000))) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
@@ -93,6 +99,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   if (linkError || !link) {
     return NextResponse.json({ error: 'Booking link not found' }, { status: 404 })
+  }
+
+  // Keyed on the link id, after the lookup, so unknown slugs can't create rows.
+  if (
+    !(await rateLimitAsync(`book:${ip}:${link.id}`, 5, 60000)) ||
+    !(await rateLimitAsync(`book-link:${link.id}`, BOOKINGS_PER_LINK_PER_HOUR, HOUR_MS))
+  ) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
   let body: unknown
@@ -114,9 +128,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   const input = parsed.data
+
+  // Each booking emails the address supplied, so cap it per recipient. Hashed so
+  // the counter table doesn't collect booker addresses.
+  const emailKey = createHash('sha256').update(input.booker_email.toLowerCase()).digest('hex')
+  if (!(await rateLimitAsync(`book-email:${emailKey}`, BOOKINGS_PER_EMAIL_PER_HOUR, HOUR_MS))) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  }
+
   const startTime = new Date(input.start_time)
   const endTime = new Date(startTime.getTime() + link.duration_minutes * 60 * 1000)
   const now = new Date()
+
+  if (startTime <= now) {
+    return NextResponse.json({ error: 'Selected time is in the past' }, { status: 409 })
+  }
 
   if (link.minimum_notice_hours > 0) {
     const minimumStart = new Date(now.getTime() + link.minimum_notice_hours * 60 * 60 * 1000)

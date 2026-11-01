@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { rateLimitAsync } from '@/lib/rate-limit'
+import { clientIp } from '@/lib/client-ip'
 import {
   notifyHostOfBooking,
   type BookingRecord,
@@ -51,8 +52,7 @@ function normalizeLink(raw: unknown): JoinedLink {
 // GET → confirmation page (no mutation)
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
-  const clientIp = request.headers.get('x-forwarded-for') ?? 'unknown'
-  if (!(await rateLimitAsync(`cancel:${clientIp}`, 20, 60000))) {
+  if (!(await rateLimitAsync(`cancel:${clientIp(request)}`, 20, 60000))) {
     return htmlResponse(resultPage('Too many requests. Please try again later.', true), 429)
   }
 
@@ -94,8 +94,7 @@ export async function GET(request: NextRequest) {
 // POST → perform the cancellation (and optionally redirect to rebook)
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
-  const clientIp = request.headers.get('x-forwarded-for') ?? 'unknown'
-  if (!(await rateLimitAsync(`cancel:${clientIp}`, 20, 60000))) {
+  if (!(await rateLimitAsync(`cancel:${clientIp(request)}`, 20, 60000))) {
     return htmlResponse(resultPage('Too many requests. Please try again later.', true), 429)
   }
 
