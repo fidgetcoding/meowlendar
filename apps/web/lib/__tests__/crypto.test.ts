@@ -45,9 +45,9 @@ describe('crypto (AES-256-GCM token encryption)', () => {
     expect(() => decryptToken(tampered)).toThrow()
   })
 
-  it('passes through non-v1 (legacy plaintext) values unchanged', () => {
+  it('refuses values that are not in v1 format', () => {
     expect(isEncrypted('legacy-plaintext-token')).toBe(false)
-    expect(decryptToken('legacy-plaintext-token')).toBe('legacy-plaintext-token')
+    expect(() => decryptToken('legacy-plaintext-token')).toThrow(/not encrypted/)
   })
 
   it('throws a clear error when the key is missing', () => {

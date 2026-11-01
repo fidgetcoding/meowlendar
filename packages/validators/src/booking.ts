@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { partialUpdate } from './partial'
 
 const weeklyAvailabilitySchema = z.object({
   day: z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
@@ -22,10 +23,10 @@ export const createBookingLinkSchema = z.object({
   minimum_notice_hours: z.number().int().min(0).default(0),
 })
 
-export const updateBookingLinkSchema = createBookingLinkSchema.partial()
+export const updateBookingLinkSchema = partialUpdate(createBookingLinkSchema)
 
 export const bookSlotSchema = z.object({
-  booker_name: z.string().min(1).max(200),
+  booker_name: z.string().min(1).max(200).regex(/^[^\r\n]*$/, 'Name cannot contain line breaks'),
   booker_email: z.string().email(),
   booker_notes: z.string().max(2000).nullable().optional(),
   start_time: z.string().datetime(),

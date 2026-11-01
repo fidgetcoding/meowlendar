@@ -273,8 +273,8 @@ export async function disconnectGoogleAccount(
   // Best-effort token revocation — don't throw if it fails
   const storedToken = account?.refresh_token ?? account?.access_token
   if (storedToken) {
-    const tokenToRevoke = decryptToken(storedToken)
     try {
+      const tokenToRevoke = decryptToken(storedToken)
       await fetch(
         `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`,
         { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }

@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { optionalEnv } from '@/lib/env'
+import { safeInternalPath } from '@/lib/safe-path'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
+  const next = safeInternalPath(searchParams.get('next')) ?? '/'
 
   if (code) {
     const cookieStore = await cookies()
@@ -78,16 +79,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const forwardedHost = request.headers.get('x-forwarded-host')
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
-      } else {
-        return NextResponse.redirect(`${origin}${next}`)
-      }
+      // Never built from x-forwarded-host: a client can send any value.
+      const base =
+        process.env.NODE_ENV === 'development'
+          ? origin
+          : process.env.NEXT_PUBLIC_APP_URL || origin
+      return NextResponse.redirect(`${base}${next}`)
     }
   }
 

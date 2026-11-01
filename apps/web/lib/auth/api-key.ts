@@ -43,6 +43,7 @@ export async function authenticateApiKey(request: NextRequest): Promise<ApiKeyAu
     .eq('key_prefix', prefix)
 
   if (!keys || keys.length === 0) {
+    console.warn('[auth] API key rejected: unknown prefix', { prefix })
     return null
   }
 
@@ -62,5 +63,6 @@ export async function authenticateApiKey(request: NextRequest): Promise<ApiKeyAu
     }
   }
 
+  console.warn('[auth] API key rejected: hash mismatch', { prefix })
   return null
 }

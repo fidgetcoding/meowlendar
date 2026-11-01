@@ -75,8 +75,9 @@ export function foldICSLine(line: string): string {
 }
 
 function attendeeValue(prefix: string, params: string, a: ICSAttendee): string {
-  const cn = a.name ? `;CN=${a.name.replace(/[;,:"]/g, ' ')}` : ''
-  return `${prefix}${cn}${params}:mailto:${a.email}`
+  // Line breaks would start a new ICS property, so they go too.
+  const cn = a.name ? `;CN=${a.name.replace(/[;,:"\r\n]/g, ' ')}` : ''
+  return `${prefix}${cn}${params}:mailto:${a.email.replace(/[\r\n]/g, '')}`
 }
 
 /**

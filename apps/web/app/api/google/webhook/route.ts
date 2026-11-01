@@ -1,6 +1,7 @@
 // SERVICE ROLE: Required — this endpoint is called by Google, not by an
 // authenticated user. It matches the inbound channel to a google_account and
 // pulls that account's changes, which needs cross-user table access.
+import { createHash, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { pullChanges } from '@/lib/google/sync'
@@ -22,6 +23,13 @@ function webhookSecret(): string | null {
   return s
 }
 
+/** Constant-time compare. Hashing first gives both sides the same length. */
+function tokenMatches(token: string | null, secret: string): boolean {
+  if (!token) return false
+  const digest = (value: string) => createHash('sha256').update(value).digest()
+  return timingSafeEqual(digest(token), digest(secret))
+}
+
 export async function POST(request: NextRequest) {
   const channelId = request.headers.get('x-goog-channel-id')
   const resourceId = request.headers.get('x-goog-resource-id')
@@ -40,7 +48,7 @@ export async function POST(request: NextRequest) {
   // Validate the shared secret Google echoes back. Without a configured secret
   // we cannot authenticate the caller, so we reject (the poll cron still syncs).
   const secret = webhookSecret()
-  if (!secret || channelToken !== secret) {
+  if (!secret || !tokenMatches(channelToken, secret)) {
     return new NextResponse(null, { status: 403 })
   }
 

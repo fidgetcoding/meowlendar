@@ -88,7 +88,7 @@ describe('Google OAuth', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ email: 'nate@poolendar.com' }),
+          json: async () => ({ email: 'user@example.com' }),
         })
 
       const result = await exchangeCodeForTokens(
@@ -100,7 +100,7 @@ describe('Google OAuth', () => {
         access_token: 'at_123',
         refresh_token: 'rt_456',
         expires_in: 3600,
-        email: 'nate@poolendar.com',
+        email: 'user@example.com',
       })
 
       // Verify the token exchange request
@@ -137,7 +137,7 @@ describe('Google OAuth', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ email: 'nate@poolendar.com' }),
+          json: async () => ({ email: 'user@example.com' }),
         })
 
       const result = await exchangeCodeForTokens('code', 'https://example.com/cb')
@@ -145,7 +145,7 @@ describe('Google OAuth', () => {
       // No throw — saveGoogleAccount preserves the token already on file.
       expect(result.refresh_token).toBeUndefined()
       expect(result.access_token).toBe('at_123')
-      expect(result.email).toBe('nate@poolendar.com')
+      expect(result.email).toBe('user@example.com')
     })
 
     it('throws when userinfo fetch fails', async () => {
@@ -173,14 +173,16 @@ describe('Google OAuth', () => {
 
   describe('disconnectGoogleAccount()', () => {
     it('revokes token and deletes the account row', async () => {
+      const { encryptToken } = await import('../../crypto')
+      const storedRefresh = encryptToken('rt_456')
       const mockDeleteEq = vi.fn().mockResolvedValue({ error: null })
       const mockSelectChain = {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
               data: {
-                access_token: 'at_123',
-                refresh_token: 'rt_456',
+                access_token: encryptToken('at_123'),
+                refresh_token: storedRefresh,
               },
               error: null,
             }),
@@ -316,7 +318,7 @@ describe('Google OAuth', () => {
         access_token: 'at_plaintext',
         refresh_token: 'rt_plaintext',
         expires_in: 3600,
-        email: 'nate@poolendar.com',
+        email: 'user@example.com',
       })
 
       expect(accountId).toBe('acct-9')
@@ -350,7 +352,7 @@ describe('Google OAuth', () => {
         access_token: 'at_new',
         // no refresh_token
         expires_in: 3600,
-        email: 'nate@poolendar.com',
+        email: 'user@example.com',
       })
 
       const payload = ga.upsert.mock.calls[0]![0]
@@ -377,7 +379,7 @@ describe('Google OAuth', () => {
         mod.saveGoogleAccount('user-1', {
           access_token: 'at_new',
           expires_in: 3600,
-          email: 'nate@poolendar.com',
+          email: 'user@example.com',
         })
       ).rejects.toThrow('no refresh_token')
 

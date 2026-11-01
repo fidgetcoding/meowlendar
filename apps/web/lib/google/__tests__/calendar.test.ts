@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
+// These tests cover the HTTP wrappers; crypto.test.ts covers token encryption.
+vi.mock('../../crypto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../crypto')>()),
+  decryptToken: (value: string) => value,
+}))
+
 vi.mock('@supabase/ssr', () => ({
   createServerClient: vi.fn(() => ({
     from: vi.fn().mockReturnValue({

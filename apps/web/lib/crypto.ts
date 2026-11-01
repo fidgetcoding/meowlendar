@@ -54,13 +54,12 @@ export function encryptToken(plaintext: string): string {
  * Decrypt a v1 payload back to plaintext. Throws if the payload is malformed or
  * fails the GCM authentication tag (tamper / wrong key).
  *
- * Values not in v1 format are returned unchanged. In a fresh project every
- * stored token is v1, so this branch only matters for a hypothetical
- * pre-encryption plaintext value — a v1 payload is always authenticated.
+ * Values not in v1 format are refused. Every write goes through encryptToken, so
+ * anything else in the column was not written by this app.
  */
 export function decryptToken(payload: string): string {
   if (!isEncrypted(payload)) {
-    return payload
+    throw new Error('[crypto] Refusing to use a token that is not encrypted')
   }
 
   const parts = payload.split(':')
