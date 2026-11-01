@@ -228,6 +228,10 @@ export function createGoogleFake() {
 
     if (!tail && req.method === 'POST') {
       const input = JSON.parse(raw)
+      // As on Google, an id can't be reused, even by a cancelled event.
+      if (input.id && cal.events.has(input.id)) {
+        return send(res, 409, { error: { code: 409, message: 'The requested identifier already exists.' } })
+      }
       const event = putEvent(cal, input)
       if (url.searchParams.get('conferenceDataVersion') === '1' && input.conferenceData?.createRequest) {
         event.hangoutLink = `https://meet.example.test/${event.id}`

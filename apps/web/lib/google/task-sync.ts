@@ -101,10 +101,20 @@ async function removeFromGoogle(supabase: Service, task: TaskRow) {
   await clearLink(supabase, task)
 }
 
+/**
+ * The Google event id for a task. Fixed per task, so two syncs running at once can't
+ * make two events: Google refuses the second create. Hex digits are valid in Google's
+ * base32hex ids.
+ */
+export function googleEventIdForTask(taskId: string): string {
+  return `mw${taskId.replace(/-/g, '').toLowerCase()}`
+}
+
 async function pushTask(supabase: Service, task: TaskRow, target: GoogleTarget) {
   const accountId = target.google_account_id as string
   const googleCalendarId = target.google_calendar_id as string
   const payload = taskToGoogle(task)
+  const eventId = googleEventIdForTask(task.id)
 
   let result: GoogleEvent | null = null
   if (task.google_event_id) {
@@ -116,7 +126,17 @@ async function pushTask(supabase: Service, task: TaskRow, target: GoogleTarget) 
     }
   }
   if (!result) {
-    result = await createGoogleEvent(accountId, googleCalendarId, payload)
+    try {
+      result = await createGoogleEvent(accountId, googleCalendarId, { ...payload, id: eventId })
+    } catch (err) {
+      // Already exists: another sync got there first, or it was deleted on Google and
+      // the id is still taken. Either way there's one event, so bring it up to date.
+      if (!/\b409\b/.test(String(err))) throw err
+      result = await updateGoogleEvent(accountId, googleCalendarId, eventId, {
+        ...payload,
+        status: 'confirmed',
+      })
+    }
   }
   await saveLink(supabase, task, {
     google_event_id: result?.id,

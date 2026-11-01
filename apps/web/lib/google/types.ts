@@ -35,6 +35,7 @@ export interface GoogleConferenceData {
 
 /** Fields this app sends in a PATCH. Null clears a text field on Google's side. */
 export interface GoogleEventWrite {
+  status?: string
   extendedProperties?: { private?: Record<string, string> }
   summary?: string
   description?: string | null
@@ -52,6 +53,8 @@ export interface GoogleEventWrite {
 
 /** Fields required to create an event. */
 export interface GoogleEventInsert extends GoogleEventWrite {
+  /** Chosen by the caller, for an id that can't be created twice. */
+  id?: string
   summary: string
   start: GoogleEventDateTime
   end: GoogleEventDateTime

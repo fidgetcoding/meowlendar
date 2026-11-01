@@ -118,6 +118,36 @@ describe('scheduled tasks on Google, against a fake server', () => {
     expect(await eventRows(user)).toEqual([])
   })
 
+  it('makes one event when several syncs run at the same moment', async () => {
+    const { email, user, calendars } = await setup('tg-u')
+    await scheduledTask(user)
+    await turnOn(user, calendars[0]!.id)
+    await Promise.all([sync(user), sync(user), sync(user), sync(user)])
+    await sync(user)
+    expect((await remote(email, email)).filter((e) => e.status === 'confirmed')).toHaveLength(1)
+  })
+
+  it('brings an event back rather than duplicating it when a task is rescheduled after a delete on Google', async () => {
+    const { email, user, calendars, accountId } = await setup('tg-v')
+    await turnOn(user, calendars[0]!.id)
+    const task = await scheduledTask(user)
+    await sync(user)
+    await sync(user, accountId)
+    const event = (await remote(email, email))[0]!
+    await fakes('google/cancel-event', { email, calendarId: email, id: event.id })
+    await sync(user, accountId)
+
+    await user.client
+      .from('tasks')
+      .update({ scheduled_start: '2030-01-11T10:00:00.000Z', scheduled_end: '2030-01-11T11:00:00.000Z' })
+      .eq('id', task.id)
+    await sync(user)
+    const events = await remote(email, email)
+    expect(events).toHaveLength(1)
+    expect(events[0]!.status).toBe('confirmed')
+    expect(events[0]!.start.dateTime).toContain('2030-01-11')
+  })
+
   it('does not bounce: a pull of our own write causes no further write', async () => {
     const { email, user, calendars, accountId } = await setup('tg-e')
     await turnOn(user, calendars[0]!.id)
