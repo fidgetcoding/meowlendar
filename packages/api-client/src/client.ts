@@ -177,7 +177,7 @@ export class PoolendarClient {
   }
   async approveBooking(id: string) { return this.request<Booking>(`/api/booking/bookings/${seg(id)}/approve`, { method: 'POST' }) }
   async declineBooking(id: string) { return this.request<Booking>(`/api/booking/bookings/${seg(id)}/decline`, { method: 'POST' }) }
-  async bookSlot(slug: string, data: { booker_name: string; booker_email: string; start_time: string }) { return this.request<Booking>(`/api/booking/book/${seg(slug)}`, { method: 'POST', body: JSON.stringify(data) }) }
+  async bookSlot(slug: string, data: { booker_name: string; booker_email: string; booker_notes?: string; start_time: string }) { return this.request<Booking>(`/api/booking/book/${seg(slug)}`, { method: 'POST', body: JSON.stringify(data) }) }
   async getAvailability(slug: string, params: { start: string; end: string; timezone?: string }) {
     const searchParams = new URLSearchParams()
     searchParams.set('start', params.start)

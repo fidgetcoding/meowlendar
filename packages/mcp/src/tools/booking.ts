@@ -253,6 +253,12 @@ export function getBookingToolDefinitions(): ToolDefinition[] {
   ]
 }
 
+/** The public booking routes go by slug, and these tools take the link's id. */
+async function slugOf(client: PoolendarClient, bookingLinkId: string): Promise<string> {
+  const link = await client.getBookingLink(bookingLinkId)
+  return link.slug
+}
+
 export function getBookingToolHandlers(
   client: PoolendarClient
 ): Record<string, ToolHandler> {
@@ -302,13 +308,12 @@ export function getBookingToolHandlers(
     },
 
     book_slot: async (args) => {
-      const booking = await client.bookSlot(args.booking_link_id as string, {
+      const booking = await client.bookSlot(await slugOf(client, args.booking_link_id as string), {
         booker_name: args.name as string,
         booker_email: args.email as string,
+        booker_notes: args.notes as string | undefined,
         start_time: args.start_time as string,
-        ...(args.end_time ? { end_time: args.end_time as string } : {}),
-        ...(args.notes ? { notes: args.notes as string } : {}),
-      } as any)
+      })
       return JSON.stringify(booking, null, 2)
     },
 
@@ -319,7 +324,7 @@ export function getBookingToolHandlers(
 
     get_availability: async (args) => {
       const date = args.date as string
-      const result = await client.getAvailability(args.booking_link_id as string, {
+      const result = await client.getAvailability(await slugOf(client, args.booking_link_id as string), {
         start: date,
         end: date,
         ...(args.timezone ? { timezone: args.timezone as string } : {}),

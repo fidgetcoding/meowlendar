@@ -114,6 +114,27 @@ export function getScheduleToolDefinitions(): ToolDefinition[] {
   ]
 }
 
+const DAY_NUMBERS: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+}
+
+interface ToolBlock {
+  day: string
+  start: string
+  end: string
+}
+
+/** The tools take day names, and the API stores 0 (Sunday) to 6. */
+function toApiBlocks(blocks: unknown) {
+  return (blocks as ToolBlock[]).map((b) => ({ ...b, day: DAY_NUMBERS[b.day] as number }))
+}
+
 export function getScheduleToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
   return {
     list_schedules: async () => {
@@ -129,14 +150,17 @@ export function getScheduleToolHandlers(client: PoolendarClient): Record<string,
     create_schedule: async (args) => {
       const schedule = await client.createSchedule({
         name: args.name as string,
-        time_blocks: args.time_blocks as { day: string; start: string; end: string }[],
+        time_blocks: toApiBlocks(args.time_blocks),
       })
       return JSON.stringify(schedule, null, 2)
     },
 
     update_schedule: async (args) => {
-      const { id, ...data } = args as Record<string, unknown>
-      const schedule = await client.updateSchedule(id as string, data)
+      const { id, time_blocks, ...data } = args as Record<string, unknown>
+      const schedule = await client.updateSchedule(id as string, {
+        ...data,
+        ...(time_blocks ? { time_blocks: toApiBlocks(time_blocks) } : {}),
+      })
       return JSON.stringify(schedule, null, 2)
     },
 

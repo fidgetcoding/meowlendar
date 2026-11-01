@@ -22,6 +22,7 @@ Run through this before putting an install on the internet.
 - Behind a proxy that is not Vercel, set `TRUSTED_IP_HEADER` to the header your proxy controls, such as `x-real-ip`. Without it, all public booking visitors share one rate-limit bucket. Never name a header your proxy does not overwrite, because clients could then forge it.
 - Generate `GOOGLE_TOKEN_ENC_KEY`, `CRON_SECRET` and `GOOGLE_WEBHOOK_SECRET` yourself, and never reuse them between installs.
 - Serve over HTTPS.
+- Behind a proxy, pass the original host through. The app refuses any Host header it doesn't recognise, with a 421.
 
 **API keys**
 - Keys give full access to the account, including managing other keys, and they do not expire. Create one per tool and delete any you stop using.
@@ -32,7 +33,10 @@ Run through this before putting an install on the internet.
 - The public anon key has no table or function access. Public booking goes through API routes that enforce availability and rate limits.
 - API-key requests run as the key's user through a real Auth session, encrypted at rest, not the service role.
 - Google tokens, API key sessions and Telegram bot tokens are encrypted with AES-256-GCM before they reach the database. Telegram tokens sit in a table only the server can read, and can only be changed from a browser session.
-- The MCP server validates every tool call against its schema, encodes path segments, and logs one line per call to stderr, without arguments.
+- Push notification addresses must belong to a known push service, so the server can't be pointed at its own network.
+- Public booking subdomains serve booking pages only, and a link opens only under its owner's name.
+- The MCP's vault tools take a vault name, never a path. Connecting a vault is CLI-only, and the sync only touches `.md` files inside the folder you named, with a dry run and a backup first.
+- The MCP server validates every tool call against its schema, refuses arguments a tool doesn't declare, encodes path segments, and logs one line per call to stderr, without arguments.
 
 ## Known limits
 

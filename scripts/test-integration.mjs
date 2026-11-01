@@ -9,7 +9,7 @@
 // Fake-server results show the app's side works. They are not proof against the
 // real services.
 import { spawn } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createECDH, randomBytes } from 'node:crypto'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -31,6 +31,12 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(process.env.NEXT_PUBLIC_SUPAB
 }
 
 const CRON_SECRET = randomBytes(16).toString('hex')
+const curve = createECDH('prime256v1')
+curve.generateKeys()
+const vapid = {
+  publicKey: curve.getPublicKey().toString('base64url'),
+  privateKey: curve.getPrivateKey().toString('base64url'),
+}
 const appEnv = {
   ...process.env,
   NODE_ENV: 'production',
@@ -47,6 +53,10 @@ const appEnv = {
   RESEND_FROM_EMAIL: 'Meowlendar <noreply@example.test>',
   // Only web-push talks to the self-signed fake, and only in this test process.
   NODE_TLS_REJECT_UNAUTHORIZED: '0',
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: vapid.publicKey,
+  VAPID_PRIVATE_KEY: vapid.privateKey,
+  VAPID_SUBJECT: 'mailto:test@example.test',
+  PUSH_ALLOWED_HOSTS: '127.0.0.1',
   SCHEDULER_INTERVAL_SECONDS: process.env.SCHEDULER_INTERVAL_SECONDS ?? '0',
   ...JSON.parse(process.env.INTEGRATION_EXTRA_ENV ?? '{}'),
 }

@@ -23,3 +23,43 @@ jobs:
       - run: pnpm test
       - run: pnpm audit --prod --audit-level=high
       - run: pnpm verify:mcp-pack
+
+  integration:
+    # A real local Supabase stack, the built app, and local fake servers for Google,
+    # Resend, Telegram and web push.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: latest
+      - run: pnpm install --frozen-lockfile
+      - run: supabase start
+      - name: Read the local stack's settings
+        run: |
+          supabase status -o env > /tmp/stack.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' /tmp/stack.env | cut -d'"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^PUBLISHABLE_KEY=' /tmp/stack.env | cut -d'"' -f2)"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SECRET_KEY=' /tmp/stack.env | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+      - run: pnpm --filter meowlendar-mcp build
+      - run: pnpm test:integration
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Browser tests
+        run: |
+          export NEXT_PUBLIC_APP_URL=http://localhost:3000
+          export GOOGLE_TOKEN_ENC_KEY=$(openssl rand -base64 32)
+          export CRON_SECRET=$(openssl rand -hex 16)
+          pnpm dev > /tmp/dev.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3000/login && break; sleep 2; done
+          curl -s -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/signup" \
+            -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+            -d '{"email":"e2e@poolendar.test","password":"e2e-test-password-1"}' > /dev/null
+          E2E_BASE=http://localhost:3000 pnpm exec playwright test --workers=2

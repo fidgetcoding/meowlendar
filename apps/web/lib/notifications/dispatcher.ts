@@ -17,6 +17,19 @@ interface DispatchResult {
   error?: string
 }
 
+const ALL_ON = {
+  enabled: true,
+  reminders: true,
+  due_dates: true,
+  bookings: true,
+  schedule_changes: true,
+} as NotificationChannelConfig
+
+const DEFAULT_CHANNELS: Record<string, NotificationChannelConfig> = {
+  browser_push: ALL_ON,
+  in_app: ALL_ON,
+}
+
 export async function dispatchNotification(
   supabase: SupabaseClient,
   userId: string,
@@ -34,7 +47,11 @@ export async function dispatchNotification(
   }
 
   const settings = profile.settings as Record<string, unknown> | null
-  const notifications = settings?.notifications as Record<string, NotificationChannelConfig> | undefined
+  // Nothing saved yet means the defaults the settings screen shows, not "all off".
+  const notifications = {
+    ...DEFAULT_CHANNELS,
+    ...(settings?.notifications as Record<string, NotificationChannelConfig> | undefined),
+  }
   const settingsKey = EVENT_TO_SETTINGS_KEY[payload.event]
 
   const promises: Promise<DispatchResult>[] = []

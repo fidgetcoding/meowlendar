@@ -11,6 +11,12 @@ describe('validateArgs', () => {
     expect(validateArgs({ title: 'x', importance: 'high' }, createTask)).toEqual([])
   })
 
+  it('rejects an argument the tool does not declare', () => {
+    expect(validateArgs({ id: 'abc', vault_ref: 'evil:line' }, deleteTask)).toEqual([
+      'vault_ref is not an accepted argument',
+    ])
+  })
+
   it('rejects a path traversal id', () => {
     expect(validateArgs({ id: '../api-keys/abc' }, deleteTask)).toEqual(['id is not a valid id'])
     expect(validateArgs({ id: '..' }, deleteTask)).toEqual(['id is not a valid id'])

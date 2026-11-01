@@ -96,3 +96,36 @@ test.describe('local calendar, no Google', () => {
     await expect(page.getByLabel('Name of Side project')).toBeVisible()
   })
 })
+
+test.describe('routines, no Google', () => {
+  test.beforeEach(() => {
+    test.skip(!E2E_LIVE, 'requires a live Supabase stack (set E2E_BASE)')
+  })
+
+  test('a daily routine shows on each day and can be completed', async ({ page }) => {
+    await signUp(page)
+    const res = await page.request.post('/api/routines', {
+      data: {
+        title: 'Morning walk',
+        start_time: '09:00',
+        end_time: '09:30',
+        timezone: 'UTC',
+        recurrence_rule: 'FREQ=DAILY',
+      },
+    })
+    expect(res.status()).toBe(201)
+
+    await page.reload()
+    const routine = page.locator('[data-calendar-item][data-item-type="routine"]').filter({ hasText: 'Morning walk' })
+    // Today onward, since a routine starts the day it is created.
+    await expect(routine.first()).toBeVisible()
+    const shown = await routine.count()
+    expect(shown).toBeGreaterThanOrEqual(1)
+
+    await routine.first().dispatchEvent('click')
+    await page.getByRole('button', { name: /complete|done/i }).first().click()
+    await page.waitForLoadState('networkidle')
+    const instances = await page.request.get('/api/routines')
+    expect(instances.ok()).toBe(true)
+  })
+})

@@ -2,7 +2,13 @@
 // tasks, routines and push subscriptions.
 import { createServerClient } from '@supabase/ssr'
 import { dispatchNotification } from '@/lib/notifications/dispatcher'
-import { eventsInWindowFilter, expandOccurrences } from '@/lib/recurrence'
+import {
+  dateInZone,
+  eventsInWindowFilter,
+  expandOccurrences,
+  routineOccursOn,
+  wallClockToInstant,
+} from '@/lib/recurrence'
 
 function getServiceClient() {
   return createServerClient(
@@ -129,40 +135,49 @@ export async function runReminders(): Promise<{ success: true; processed: number
     }
   }
 
-  // --- Routine instances for today ---
-  const todayStr = now.toISOString().slice(0, 10)
-  const { data: instances } = await supabase
-    .from('routine_instances')
-    .select(`
-      id, routine_id, date, status, override_start_time,
-      routines!inner (id, user_id, title, start_time, reminders, timezone)
-    `)
-    .eq('date', todayStr)
-    .eq('status', 'pending')
+  // --- Routines ---
+  // A routine has no row per day until someone acts on it, so occurrences come from
+  // its rule, in its own time zone. A row only changes a day: skipped, done, or moved.
+  const { data: routines } = await supabase
+    .from('routines')
+    .select('id, user_id, title, start_time, timezone, recurrence_rule, reminders, created_at')
+    .not('reminders', 'eq', '[]')
 
-  for (const inst of instances ?? []) {
-    const routine = inst.routines as unknown as {
-      id: string; user_id: string; title: string
-      start_time: string; reminders: { minutes_before: number }[]
-    }
-    if (!routine?.reminders?.length) continue
-    const fullStart = `${inst.date}T${inst.override_start_time ?? routine.start_time}`
-    const startDate = new Date(fullStart)
-    if (startDate > windowEnd || startDate < now) continue
+  for (const routine of routines ?? []) {
+    const reminders = (routine.reminders as { minutes_before: number }[]) ?? []
+    const zone = routine.timezone as string
+    const dates = new Set([dateInZone(now, zone), dateInZone(windowEnd, zone)])
 
-    for (const r of routine.reminders) {
-      if (!isReminderDue(fullStart, r.minutes_before, now)) continue
-      const key = dedupKey('routine', inst.id, r.minutes_before, fullStart)
-      if (await alreadySent(supabase, key)) continue
-      await dispatchNotification(supabase, routine.user_id, {
-        title: `Routine ${minutesLabel(r.minutes_before)}`,
-        body: routine.title,
-        event: 'routine_reminder',
-        data: { routine_id: routine.id, instance_id: inst.id,
-          minutes_before: r.minutes_before },
-      })
-      await markSent(supabase, key)
-      processed++
+    for (const date of dates) {
+      if (!routineOccursOn(routine.recurrence_rule, routine.created_at, date)) continue
+
+      const { data: instance } = await supabase
+        .from('routine_instances')
+        .select('id, status, override_start_time')
+        .eq('routine_id', routine.id)
+        .eq('date', date)
+        .maybeSingle()
+      if (instance && instance.status !== 'pending') continue
+
+      const start = wallClockToInstant(
+        date,
+        instance?.override_start_time ?? routine.start_time,
+        zone,
+      ).toISOString()
+
+      for (const r of reminders) {
+        if (!isReminderDue(start, r.minutes_before, now)) continue
+        const key = dedupKey('routine', routine.id, r.minutes_before, start)
+        if (await alreadySent(supabase, key)) continue
+        await dispatchNotification(supabase, routine.user_id, {
+          title: `Routine ${minutesLabel(r.minutes_before)}`,
+          body: routine.title,
+          event: 'routine_reminder',
+          data: { routine_id: routine.id, date, minutes_before: r.minutes_before },
+        })
+        await markSent(supabase, key)
+        processed++
+      }
     }
   }
 

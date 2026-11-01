@@ -43,7 +43,7 @@ function check(value: unknown, schema: Schema, path: string, errors: string[]): 
     value.forEach((item, i) => check(item, schema.items!, `${path}[${i}]`, errors))
   }
   if (schema.properties && typeof value === 'object' && value !== null && !Array.isArray(value)) {
-    checkObject(value as Record<string, unknown>, schema, path, errors)
+    checkObject(value as Record<string, unknown>, schema, `${path}.`, errors)
   }
 }
 
@@ -55,6 +55,13 @@ function checkObject(
 ): void {
   for (const name of schema.required ?? []) {
     if (value[name] === undefined) errors.push(`${path}${name} is required`)
+  }
+  // The schema is the whole contract. An undeclared argument is either a mistake or
+  // an injected attempt to reach a field the tool doesn't offer.
+  for (const name of Object.keys(value)) {
+    if (schema.properties && !(name in schema.properties)) {
+      errors.push(`${path}${name} is not an accepted argument`)
+    }
   }
   for (const [name, prop] of Object.entries(schema.properties ?? {})) {
     const field = value[name]

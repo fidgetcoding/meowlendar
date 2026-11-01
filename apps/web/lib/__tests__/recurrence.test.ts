@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import {
   exceptionLines,
+  dateInZone,
   expandOccurrences,
   isValidRecurrenceRule,
   occurrenceItemId,
   parseEventItemId,
   parseExceptionLines,
+  routineOccursOn,
   ruleEndingBefore,
+  wallClockToInstant,
 } from '../recurrence'
 
 const base = {
@@ -106,5 +109,27 @@ describe('helpers', () => {
     const iso = ['2026-03-03T14:00:00.000Z']
     expect(parseExceptionLines(exceptionLines(iso))).toEqual(iso)
     expect(parseExceptionLines(['RRULE:FREQ=DAILY', 'EXDATE;TZID=UTC:20260303T140000,20260304T140000'])).toHaveLength(2)
+  })
+})
+
+describe('routine helpers', () => {
+  it('finds which dates a rule lands on', () => {
+    const created = '2030-01-07T12:00:00.000Z' // a Monday
+    expect(routineOccursOn('FREQ=DAILY', created, '2030-01-09')).toBe(true)
+    expect(routineOccursOn('FREQ=DAILY', created, '2030-01-06')).toBe(false)
+    expect(routineOccursOn('FREQ=WEEKLY;BYDAY=TU', created, '2030-01-08')).toBe(true)
+    expect(routineOccursOn('FREQ=WEEKLY;BYDAY=TU', created, '2030-01-09')).toBe(false)
+    expect(routineOccursOn('FREQ=WEEKLY', created, '2030-01-14')).toBe(true)
+    expect(routineOccursOn('FREQ=WEEKLY', created, '2030-01-15')).toBe(false)
+    expect(routineOccursOn('FREQ=DAILY;INTERVAL=2', created, '2030-01-08')).toBe(false)
+    expect(routineOccursOn('FREQ=DAILY;COUNT=2', created, '2030-01-09')).toBe(false)
+    expect(routineOccursOn('nonsense', created, '2030-01-09')).toBe(false)
+  })
+
+  it('converts wall clock times to instants', () => {
+    expect(wallClockToInstant('2030-01-08', '09:00', 'America/New_York').toISOString()).toBe('2030-01-08T14:00:00.000Z')
+    expect(wallClockToInstant('2030-07-08', '09:00', 'America/New_York').toISOString()).toBe('2030-07-08T13:00:00.000Z')
+    expect(wallClockToInstant('2030-01-08', '09:00', 'Asia/Dubai').toISOString()).toBe('2030-01-08T05:00:00.000Z')
+    expect(dateInZone(new Date('2030-01-08T22:00:00.000Z'), 'Asia/Dubai')).toBe('2030-01-09')
   })
 })

@@ -5,8 +5,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../../lib/auth/helpers'
 import { z } from 'zod'
 
+// The server POSTs to this address on the user's behalf, so it can't be just any URL
+// or a user could aim the server at something on its own network.
+const PUSH_SERVICE_HOSTS = [
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'web.push.apple.com',
+]
+
+function isPushServiceEndpoint(endpoint: string): boolean {
+  const url = new URL(endpoint)
+  if (url.protocol !== 'https:') return false
+  const host = url.hostname.toLowerCase()
+  const extra = (process.env.PUSH_ALLOWED_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase())
+  return (
+    PUSH_SERVICE_HOSTS.includes(host) ||
+    host.endsWith('.notify.windows.com') ||
+    host.endsWith('.push.apple.com') ||
+    host.endsWith('.push.services.mozilla.com') ||
+    extra.includes(host)
+  )
+}
+
 const subscribeSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: z.string().url().max(2000).refine(isPushServiceEndpoint, {
+    message: 'Not a known push service',
+  }),
   keys: z.object({
     p256dh: z.string().min(1),
     auth: z.string().min(1),

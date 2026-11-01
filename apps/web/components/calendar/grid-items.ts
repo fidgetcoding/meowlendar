@@ -1,17 +1,7 @@
 import { format, parseISO, setHours, setMinutes } from 'date-fns'
 import type { CalendarEvent, Task, Routine, Calendar } from '@poolendar/types'
 import type { CalendarItemData } from './calendar-types'
-import { expandOccurrences, occurrenceItemId } from '@/lib/recurrence'
-
-const DAY_CODE_MAP: Record<string, number> = {
-  SU: 0,
-  MO: 1,
-  TU: 2,
-  WE: 3,
-  TH: 4,
-  FR: 5,
-  SA: 6,
-}
+import { expandOccurrences, occurrenceItemId, routineOccursOn } from '@/lib/recurrence'
 
 const FALLBACK_COLOR = '#f9a825'
 
@@ -126,22 +116,8 @@ export function routinesToItems(
       endMinute = parseInt(eParts[1] ?? '0', 10) || 0
     }
 
-    let allowedDays: number[] | null = null
-    if (routine.recurrence_rule) {
-      const byDayMatch = routine.recurrence_rule.match(/BYDAY=([A-Z,]+)/)
-      if (byDayMatch) {
-        allowedDays = byDayMatch[1]!
-          .split(',')
-          .map((d) => DAY_CODE_MAP[d])
-          .filter((d): d is number => d !== undefined)
-      }
-      if (routine.recurrence_rule.includes('FREQ=DAILY')) {
-        allowedDays = null
-      }
-    }
-
     for (const day of visibleDays) {
-      if (allowedDays && !allowedDays.includes(day.getDay())) continue
+      if (!routineOccursOn(routine.recurrence_rule, routine.created_at, format(day, 'yyyy-MM-dd'))) continue
 
       const startTime = setMinutes(setHours(new Date(day), startHour), startMinute)
       startTime.setSeconds(0, 0)

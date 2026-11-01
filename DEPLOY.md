@@ -164,6 +164,7 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | for push alerts | `npx web-push generate-vapid-keys` |
 | `VAPID_PRIVATE_KEY` | for push alerts | Same command |
 | `VAPID_SUBJECT` | for push alerts | `mailto:you@example.com` |
+| `PUSH_ALLOWED_HOSTS` | no | Extra push service hosts, for a self-run one. The major browsers' services are built in |
 | `BOOKING_ROOT_DOMAIN` | no | Domain for subdomain booking pages. Defaults to the app host |
 | `ALLOWED_HOSTS` | no | Comma-separated extra hosts the app answers on |
 | `TRUSTED_IP_HEADER` | behind a non-Vercel proxy | Header your proxy overwrites, such as `x-real-ip`. See `SECURITY.md` |
@@ -211,3 +212,19 @@ Once the package is installed, the same command is `meowlendar-vault`.
 - **Rate limit.** The app allows 100 writes per minute per key. A first sync bigger than that stops at the limit. Run `plan` and `apply` again a minute later to continue.
 
 See `packages/mcp/README.md` for the field mapping and path rules.
+
+## 8. Run the tests
+
+```bash
+pnpm lint
+pnpm test
+```
+
+The integration tests and browser tests need a local stack you started yourself, passed in through `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`:
+
+```bash
+pnpm --filter meowlendar-mcp build
+pnpm test:integration
+```
+
+They use local fake servers for Google, Resend, Telegram and web push, from `tests/fakes`. A pass shows my side of the conversation works, not that the real services behave the same way.

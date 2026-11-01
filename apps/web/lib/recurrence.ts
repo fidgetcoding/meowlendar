@@ -117,6 +117,31 @@ export function expandOccurrences(
   return occurrences
 }
 
+/** The instant a wall-clock date and time means in `timeZone`. */
+export function wallClockToInstant(date: string, time: string, timeZone: string): Date {
+  const [hour = 0, minute = 0] = time.split(':').map(Number)
+  const [year = 1970, month = 1, day = 1] = date.split('-').map(Number)
+  return fromWallClock(new Date(Date.UTC(year, month - 1, day, hour, minute)), safeZone(timeZone, false))
+}
+
+/** The YYYY-MM-DD date of an instant in `timeZone`. */
+export function dateInZone(instant: Date, timeZone: string): string {
+  return toWallClock(instant, safeZone(timeZone, false)).toISOString().slice(0, 10)
+}
+
+/**
+ * Whether a routine's rule lands on a date. A routine has times of day rather than a
+ * start date, so its rule counts from the day it was created.
+ */
+export function routineOccursOn(rule: string, createdAt: string, date: string): boolean {
+  if (!isValidRecurrenceRule(rule)) return false
+  const anchor = new Date(`${createdAt.slice(0, 10)}T00:00:00.000Z`)
+  const day = new Date(`${date}T00:00:00.000Z`)
+  if (day < anchor) return false
+  const series = new RRule({ ...RRule.parseString(ruleText(rule)), dtstart: anchor })
+  return series.between(day, day, true).length > 0
+}
+
 /** A copy of `rule` ending just before `before`. Drops any COUNT, which UNTIL replaces. */
 export function ruleEndingBefore(rule: string, before: Date): string {
   const until = new Date(before.getTime() - 1000)
