@@ -257,38 +257,55 @@ describe('reminders', () => {
     expect((await recorded()).telegram.some((m) => m.text.includes('Soon task'))).toBe(true)
   })
 
+  it('fires reminders set more than an hour ahead', async () => {
+    const user = await createUser('rem-i')
+    await telegramOn(user)
+    const start = new Date(Date.now() + 2 * 864e5 + 20_000)
+    const end = new Date(start.getTime() + 1_800_000).toISOString()
+    const reminders = [{ minutes_before: 2 * 1440 }]
+    await user.api('/api/events', {
+      method: 'POST',
+      body: JSON.stringify({ calendar_id: await localCalendar(user), title: 'Far event', start_time: start.toISOString(), end_time: end, timezone: 'UTC', reminders }),
+    })
+    await user.api('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Far task', scheduled_start: start.toISOString(), scheduled_end: end, reminders }),
+    })
+    await cron('reminders')
+    const { telegram } = await recorded()
+    expect(telegram.some((m) => m.text.includes('Far event'))).toBe(true)
+    expect(telegram.some((m) => m.text.includes('Far task'))).toBe(true)
+  })
+
   describe('routines', () => {
-    async function routineDueSoon(user: TestUser, title: string, timezone: string) {
-      const start = dueSoon()
-      const hm = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(
-        // Times are whole minutes, so aim for the minute that keeps the reminder in window.
-        new Date(start.getTime() + 30_000),
-      )
-      const later = new Date(start.getTime() + 60 * 60_000)
-      const end = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(later)
+    async function routineDueSoon(user: TestUser, title: string, timezone: string, minutesBefore = 10) {
+      // Routine times are whole minutes and the job looks 60 seconds ahead. Wait out the
+      // end of a minute, so the next whole minute is ahead of us and inside that window.
+      const seconds = new Date().getSeconds()
+      if (seconds === 0 || seconds >= 40) {
+        await new Promise((r) => setTimeout(r, (seconds === 0 ? 1 : 61 - seconds) * 1000))
+      }
+      const start = new Date((Math.floor(Date.now() / 60_000) + 1 + minutesBefore) * 60_000)
+      const clock = (at: Date) =>
+        new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at)
       const res = await user.api('/api/routines', {
         method: 'POST',
         body: JSON.stringify({
           title,
-          start_time: hm,
-          end_time: end,
+          start_time: clock(start),
+          end_time: clock(new Date(start.getTime() + 60 * 60_000)),
           timezone,
           recurrence_rule: 'FREQ=DAILY',
-          reminders: [{ minutes_before: 10 }],
+          reminders: [{ minutes_before: minutesBefore }],
         }),
       })
       expect(res.status).toBe(201)
-      return (await res.json()) as { id: string }
+      return { ...((await res.json()) as { id: string }), date: new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(start) }
     }
 
-    /** Whole-minute start times can miss the window by a few seconds, so allow a retry. */
     async function fired(title: string) {
-      for (let i = 0; i < 3; i++) {
-        await cron('reminders')
-        if ((await recorded()).telegram.some((m) => m.text.includes(title))) return true
-        await new Promise((r) => setTimeout(r, 25_000))
-      }
-      return false
+      await cron('reminders')
+      return (await recorded()).telegram.some((m) => m.text.includes(title))
     }
 
     it('reminds with no instance row, in the routine\'s own time zone', async () => {
@@ -296,21 +313,26 @@ describe('reminders', () => {
       await telegramOn(user)
       await routineDueSoon(user, 'Stretch in Dubai', 'Asia/Dubai')
       expect(await fired('Stretch in Dubai')).toBe(true)
-    }, 120_000)
+    }, 60_000)
+
+    it('fires a reminder set days ahead', async () => {
+      const user = await createUser('rem-h')
+      await telegramOn(user)
+      await routineDueSoon(user, 'Two days out', 'Asia/Dubai', 2 * 1440)
+      expect(await fired('Two days out')).toBe(true)
+    }, 60_000)
 
     it('stays quiet on a day marked skipped', async () => {
       const user = await createUser('rem-e')
       await telegramOn(user)
       const routine = await routineDueSoon(user, 'Skipped stretch', 'UTC')
-      const today = new Date().toISOString().slice(0, 10)
-      const skip = await user.api(`/api/routines/${routine.id}/instances/${today}`, {
+      const skip = await user.api(`/api/routines/${routine.id}/instances/${routine.date}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'skipped' }),
       })
       expect(skip.status).toBe(200)
-      await cron('reminders')
-      expect((await recorded()).telegram.some((m) => m.text.includes('Skipped stretch'))).toBe(false)
-    })
+      expect(await fired('Skipped stretch')).toBe(false)
+    }, 60_000)
 
     it('tracks completing and skipping across a window', async () => {
       const user = await createUser('rem-f')

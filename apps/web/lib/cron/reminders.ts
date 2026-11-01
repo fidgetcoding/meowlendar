@@ -18,6 +18,10 @@ function getServiceClient() {
   )
 }
 
+/** The longest reminder the job looks ahead for, plus its own 60 second window. */
+const MAX_REMINDER_MINUTES = 7 * 1440
+const LOOKAHEAD_MS = (MAX_REMINDER_MINUTES + 1) * 60_000
+
 /** True when the reminder fires within the next 60 seconds. */
 function isReminderDue(startIso: string, minutesBefore: number, now: Date): boolean {
   const reminderAt = new Date(startIso).getTime() - minutesBefore * 60_000
@@ -74,7 +78,7 @@ async function cleanupStaleEntries(
 export async function runReminders(): Promise<{ success: true; processed: number }> {
   const supabase = getServiceClient()
   const now = new Date()
-  const windowEnd = new Date(now.getTime() + 60 * 60_000)
+  const windowEnd = new Date(now.getTime() + LOOKAHEAD_MS)
   let processed = 0
 
   // Garbage-collect stale dedup rows before processing
@@ -146,7 +150,11 @@ export async function runReminders(): Promise<{ success: true; processed: number
   for (const routine of routines ?? []) {
     const reminders = (routine.reminders as { minutes_before: number }[]) ?? []
     const zone = routine.timezone as string
-    const dates = new Set([dateInZone(now, zone), dateInZone(windowEnd, zone)])
+    // Only as many days ahead as this routine's longest reminder reaches.
+    const longest = Math.min(Math.max(0, ...reminders.map((r) => r.minutes_before)), MAX_REMINDER_MINUTES)
+    const lastInstant = now.getTime() + (longest + 1) * 60_000
+    const dates = new Set([dateInZone(new Date(lastInstant), zone)])
+    for (let t = now.getTime(); t < lastInstant; t += 86_400_000) dates.add(dateInZone(new Date(t), zone))
 
     for (const date of dates) {
       if (!routineOccursOn(routine.recurrence_rule, routine.created_at, date)) continue
