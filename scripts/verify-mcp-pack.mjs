@@ -86,7 +86,8 @@ try {
   writeFileSync(join(app, 'package.json'), '{"name":"clean-machine","private":true}')
 
   const packOut = run('npm', ['pack', '--json', '--pack-destination', work], { cwd: pkgDir })
-  const packed = JSON.parse(packOut.slice(packOut.indexOf('[')))[0]
+  // The prepack build prints to stdout too, and can include '[' colour codes.
+  const packed = JSON.parse(packOut.slice(packOut.search(/^\[\s*$/m)))[0]
   const tarball = join(work, packed.filename)
   const files = packed.files.map((f) => f.path)
   console.log(`packed ${packed.filename}: ${packed.files.length} files, ${packed.size} bytes`)
