@@ -192,15 +192,6 @@ export function CalendarWorkspace({
     const end = endTime ?? new Date(startTime.getTime() + store.defaultTaskDuration * 60000)
 
     if (type === 'event') {
-      if (!defaultCalendarId) {
-        // No calendar to attach the event to — open the full form instead.
-        openEditForm(null, 'event', 'event', {
-          title,
-          start_time: startTime.toISOString(),
-          end_time: end.toISOString(),
-        })
-        return
-      }
       undoable.createEvent({
         user_id: userId,
         calendar_id: defaultCalendarId,

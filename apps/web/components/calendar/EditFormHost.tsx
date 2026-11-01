@@ -181,12 +181,7 @@ export function EditFormHost({
   // ------ Save routing ------
   function createItem(type: ItemType, data: Record<string, unknown>) {
     if (type === 'event') {
-      const calendarId =
-        (data.calendar_id as string | null) ?? calendars[0]?.id ?? null
-      if (!calendarId) {
-        window.alert('Create a calendar before creating an event.')
-        return
-      }
+      const calendarId = (data.calendar_id as string | null) ?? calendars[0]?.id ?? null
       undoable.createEvent({
         user_id: userId,
         calendar_id: calendarId,

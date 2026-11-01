@@ -21,8 +21,13 @@ export const eventKeys = {
 // Input types
 // ---------------------------------------------------------------------------
 
-export type CreateEventInput = Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at' | 'user_id'> & {
+export type CreateEventInput = Omit<
+  CalendarEvent,
+  'id' | 'created_at' | 'updated_at' | 'user_id' | 'calendar_id'
+> & {
   user_id?: string | null
+  /** Left empty, the event goes on the user's default calendar. */
+  calendar_id?: string | null
 }
 
 export type UpdateEventInput = {
@@ -81,6 +86,29 @@ export function useEvent(id: string) {
   })
 }
 
+/**
+ * The calendar a new event goes on when none was chosen: the primary Google calendar,
+ * else the first one turned on. Asked at save time, because a quick-create can happen
+ * before the browser has loaded the calendar list.
+ */
+async function defaultCalendarId(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('calendars')
+    .select('id, is_primary')
+    .eq('user_id', ownerId)
+    .eq('is_active', true)
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1)
+  if (error) throw error
+  const id = data?.[0]?.id as string | undefined
+  if (!id) throw new Error('Turn on a calendar before creating an event')
+  return id
+}
+
 // ---------------------------------------------------------------------------
 // useCreateEvent
 // ---------------------------------------------------------------------------
@@ -90,7 +118,7 @@ export function useCreateEvent() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ user_id, ...rest }: CreateEventInput): Promise<CalendarEvent> => {
+    mutationFn: async ({ user_id, calendar_id, ...rest }: CreateEventInput): Promise<CalendarEvent> => {
       // Never drop a create because the profile query is still in flight.
       let ownerId = user_id ?? null
       if (!ownerId) {
@@ -102,7 +130,11 @@ export function useCreateEvent() {
 
       const { data, error } = await supabase
         .from('events')
-        .insert({ ...rest, user_id: ownerId })
+        .insert({
+          ...rest,
+          user_id: ownerId,
+          calendar_id: calendar_id ?? (await defaultCalendarId(supabase, ownerId)),
+        })
         .select('*')
         .single()
 
@@ -121,6 +153,7 @@ export function useCreateEvent() {
       const optimistic: CalendarEvent = {
         ...input,
         user_id: input.user_id ?? '',
+        calendar_id: input.calendar_id ?? '',
         id: tempId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
