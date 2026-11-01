@@ -111,10 +111,6 @@ export function getProfileToolDefinitions(): ToolDefinition[] {
                 enum: ['compact', 'comfortable', 'spacious'],
                 description: 'Calendar row height density.',
               },
-              telegram_bot_token: {
-                type: 'string',
-                description: 'Telegram bot token for notifications.',
-              },
               telegram_chat_id: {
                 type: 'string',
                 description: 'Telegram chat ID for notifications.',

@@ -31,11 +31,10 @@ Run through this before putting an install on the internet.
 - Row Level Security is on for every table. Composite foreign keys stop a row from pointing at another user's Google account or calendar.
 - The public anon key has no table or function access. Public booking goes through API routes that enforce availability and rate limits.
 - API-key requests run as the key's user through a real Auth session, encrypted at rest, not the service role.
-- Google tokens are encrypted with AES-256-GCM before they reach the database.
+- Google tokens, API key sessions and Telegram bot tokens are encrypted with AES-256-GCM before they reach the database. Telegram tokens sit in a table only the server can read, and can only be changed from a browser session.
 - The MCP server validates every tool call against its schema, encodes path segments, and logs one line per call to stderr, without arguments.
 
 ## Known limits
 
-- Telegram bot tokens are stored unencrypted in `profiles.settings`, readable by the account owner and the database admin.
 - The Content Security Policy allows inline scripts, because the Next.js app has no nonce setup. It limits where data can go more than what can run.
 - Browser sessions have no per-user rate limit. API keys do.

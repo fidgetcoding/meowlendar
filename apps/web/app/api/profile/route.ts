@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../lib/auth/helpers'
 import { z } from 'zod'
+import { hasTelegramToken } from '../../../lib/notifications/telegram-token'
 
 const updateProfileSchema = z.object({
   display_name: z.string().max(200).nullable().optional(),
@@ -28,16 +29,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   }
 
-  // Strip sensitive credentials from the settings object before returning.
-  // Telegram bot tokens are stored in settings but must never be exposed
-  // to the client -- the client only needs to know whether they are configured.
+  // The client only needs to know whether Telegram is configured. The bot token
+  // itself lives in user_secrets and never comes back.
   if (profile.settings && typeof profile.settings === 'object') {
     const safeSettings = { ...(profile.settings as Record<string, unknown>) }
-    const hasTelegramToken = Boolean(safeSettings.telegram_bot_token)
     const hasTelegramChat = Boolean(safeSettings.telegram_chat_id)
-    delete safeSettings.telegram_bot_token
     delete safeSettings.telegram_chat_id
-    safeSettings.telegram_configured = hasTelegramToken && hasTelegramChat
+    safeSettings.telegram_configured = hasTelegramChat && (await hasTelegramToken(userId))
     return NextResponse.json({ ...profile, settings: safeSettings })
   }
 
@@ -99,11 +97,9 @@ export async function PATCH(request: NextRequest) {
   const safeProfile = { ...profile }
   if (safeProfile.settings && typeof safeProfile.settings === 'object') {
     const s = { ...(safeProfile.settings as Record<string, unknown>) }
-    const hasTelegramToken = Boolean(s.telegram_bot_token)
     const hasTelegramChat = Boolean(s.telegram_chat_id)
-    delete s.telegram_bot_token
     delete s.telegram_chat_id
-    s.telegram_configured = hasTelegramToken && hasTelegramChat
+    s.telegram_configured = hasTelegramChat && (await hasTelegramToken(userId))
     safeProfile.settings = s
   }
   return NextResponse.json(safeProfile)

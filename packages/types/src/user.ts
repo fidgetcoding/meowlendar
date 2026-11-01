@@ -37,7 +37,6 @@ export interface UserSettings {
   merge_duplicate_events: boolean
   background_density: 'compact' | 'comfortable' | 'spacious'
   notifications: NotificationSettings
-  telegram_bot_token: string | null
   telegram_chat_id: string | null
   booking_page_title: string | null
   booking_page_welcome: string | null

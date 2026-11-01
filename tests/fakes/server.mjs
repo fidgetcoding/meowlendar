@@ -34,7 +34,7 @@ const telegram = createServer(async (req, res) => {
   const match = req.url.match(/^\/bot([^/]+)\/sendMessage$/)
   if (!match) return json(res, 404, { ok: false })
   // The real API refuses an unknown bot token with 401.
-  if (match[1].startsWith('bad')) return json(res, 401, { ok: false, description: 'Unauthorized' })
+  if (match[1].includes(':bad')) return json(res, 401, { ok: false, description: 'Unauthorized' })
   recorded.telegram.push({ token: match[1], ...JSON.parse(body.toString()) })
   json(res, 200, { ok: true, result: { message_id: recorded.telegram.length } })
 })

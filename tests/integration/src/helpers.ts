@@ -69,6 +69,25 @@ export async function createUser(prefix = 'user'): Promise<TestUser> {
   }
 }
 
+/** Calls the app as a signed-in browser would, using the Supabase session cookie. */
+export async function browserApi(user: TestUser, path: string, init: RequestInit = {}): Promise<Response> {
+  const { data, error } = await publicClient().auth.signInWithPassword({
+    email: user.email,
+    password: user.password,
+  })
+  if (error || !data.session) throw error ?? new Error('sign-in failed')
+  const ref = new URL(SUPABASE_URL).hostname.split('.')[0]
+  const value = Buffer.from(JSON.stringify(data.session)).toString('base64url')
+  return fetch(`${APP}${path}`, {
+    ...init,
+    headers: {
+      Cookie: `sb-${ref}-auth-token=base64-${value}`,
+      'Content-Type': 'application/json',
+      ...init.headers,
+    },
+  })
+}
+
 export function cron(route: string): Promise<Response> {
   return fetch(`${APP}/api/cron/${route}`, { headers: { Authorization: `Bearer ${CRON_SECRET}` } })
 }

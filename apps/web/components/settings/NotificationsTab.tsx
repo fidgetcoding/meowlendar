@@ -216,14 +216,9 @@ export function NotificationsTab({
         title="Telegram Integration"
         description="Connect a Telegram bot for notifications"
       >
-        <Input
-          label="Bot Token"
-          placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          value={settings.telegram_bot_token || ''}
-          onChange={(e) =>
-            onChange({ telegram_bot_token: e.target.value || null })
-          }
-        />
+        <p className="text-xs text-[var(--muted)]">
+          Set the bot token under Integrations, Telegram.
+        </p>
         <Input
           label="Chat ID"
           placeholder="Your Telegram chat ID"

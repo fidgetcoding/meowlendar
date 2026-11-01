@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Send, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -15,8 +15,63 @@ interface TelegramTabProps {
 
 export function TelegramTab({ settings, onChange }: TelegramTabProps) {
   const [sending, setSending] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [tokenSet, setTokenSet] = useState(false)
+  const [newToken, setNewToken] = useState('')
 
-  const hasConfig = !!(settings.telegram_bot_token && settings.telegram_chat_id)
+  const hasConfig = tokenSet && !!settings.telegram_chat_id
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/telegram/token')
+      .then((res) => (res.ok ? res.json() : { configured: false }))
+      .then((body) => {
+        if (!cancelled) setTokenSet(Boolean(body.configured))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function saveToken() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/telegram/token', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: newToken.trim() }),
+      })
+      if (!res.ok) {
+        toast.error('That does not look like a bot token')
+        return
+      }
+      setTokenSet(true)
+      setNewToken('')
+      toast.success('Bot token saved')
+    } catch {
+      toast.error('Failed to save the bot token')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeToken() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/telegram/token', { method: 'DELETE' })
+      if (res.ok) {
+        setTokenSet(false)
+        toast.success('Bot token removed')
+      } else {
+        toast.error('Failed to remove the bot token')
+      }
+    } catch {
+      toast.error('Failed to remove the bot token')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function sendTestMessage() {
     setSending(true)
@@ -70,14 +125,29 @@ export function TelegramTab({ settings, onChange }: TelegramTabProps) {
           </ol>
         </div>
 
-        <Input
-          label="Bot Token"
-          placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          value={settings.telegram_bot_token || ''}
-          onChange={(e) =>
-            onChange({ telegram_bot_token: e.target.value || null })
-          }
-        />
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              label={tokenSet ? 'Bot Token (saved, enter a new one to replace it)' : 'Bot Token'}
+              type="password"
+              autoComplete="off"
+              placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+              value={newToken}
+              onChange={(e) => setNewToken(e.target.value)}
+            />
+          </div>
+          <Button size="sm" onClick={saveToken} disabled={saving || !newToken.trim()}>
+            Save
+          </Button>
+          {tokenSet && (
+            <Button variant="outline" size="sm" onClick={removeToken} disabled={saving}>
+              Remove
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-[var(--muted)]">
+          The token is encrypted on the server and never sent back to your browser.
+        </p>
         <Input
           label="Chat ID"
           placeholder="Your Telegram chat ID"

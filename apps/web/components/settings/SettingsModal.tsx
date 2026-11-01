@@ -95,7 +95,6 @@ const DEFAULT_SETTINGS: UserSettings = {
     in_app: { enabled: true, reminders: true, due_dates: true, bookings: true, schedule_changes: true },
     telegram: { enabled: false, reminders: false, due_dates: false, bookings: false, schedule_changes: false },
   },
-  telegram_bot_token: null,
   telegram_chat_id: null,
   booking_page_title: null,
   booking_page_welcome: null,

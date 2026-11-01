@@ -9,6 +9,7 @@ import { EVENT_TO_SETTINGS_KEY } from './types'
 import { sendEmailNotification } from './email'
 import { sendPushNotification } from './push'
 import { sendTelegramNotification } from './telegram'
+import { getTelegramToken } from './telegram-token'
 
 interface DispatchResult {
   channel: NotificationChannel
@@ -51,8 +52,8 @@ export async function dispatchNotification(
   }
 
   if (isChannelEnabled(notifications?.telegram, settingsKey)) {
-    const botToken = settings?.telegram_bot_token as string | null
     const chatId = settings?.telegram_chat_id as string | null
+    const botToken = chatId ? await getTelegramToken(userId) : null
     if (botToken && chatId) {
       promises.push(dispatchTelegram(botToken, chatId, payload))
     }
@@ -93,8 +94,8 @@ export async function dispatchToChannel(
     case 'in_app':
       return dispatchInApp(supabase, userId, payload)
     case 'telegram': {
-      const botToken = settings?.telegram_bot_token as string | null
       const chatId = settings?.telegram_chat_id as string | null
+      const botToken = chatId ? await getTelegramToken(userId) : null
       if (!botToken || !chatId) {
         return { channel, success: false, error: 'Telegram not configured' }
       }
