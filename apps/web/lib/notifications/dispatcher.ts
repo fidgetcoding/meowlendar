@@ -164,7 +164,9 @@ async function dispatchInApp(
   payload: NotificationPayload
 ): Promise<DispatchResult> {
   try {
-    const channel = supabase.channel(`notifications:${userId}`)
+    const channel = supabase.channel(`notifications:${userId}`, {
+      config: { private: true },
+    })
     await channel.send({
       type: 'broadcast',
       event: 'notification',

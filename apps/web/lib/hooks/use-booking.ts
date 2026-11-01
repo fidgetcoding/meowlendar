@@ -48,9 +48,15 @@ export function useBookingLinks() {
   return useQuery({
     queryKey: bookingKeys.links(),
     queryFn: async (): Promise<BookingLink[]> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
       const { data, error } = await supabase
         .from('booking_links')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error

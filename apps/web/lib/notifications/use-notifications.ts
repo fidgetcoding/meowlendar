@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { safeInternalPath } from '@/lib/safe-path'
 import type { NotificationPayload } from './types'
 
 // ---------------------------------------------------------------------------
@@ -15,19 +16,22 @@ export function useNotifications(userId: string | undefined) {
 
     const supabase = createClient()
 
-    const channel = supabase.channel(`notifications:${userId}`)
+    const channel = supabase.channel(`notifications:${userId}`, {
+      config: { private: true },
+    })
 
     channel
       .on('broadcast', { event: 'notification' }, ({ payload }) => {
         const notification = payload as NotificationPayload
+        const url = safeInternalPath(notification.url)
 
         toast(notification.title, {
           description: notification.body,
-          action: notification.url
+          action: url
             ? {
                 label: 'Open',
                 onClick: () => {
-                  window.location.href = notification.url!
+                  window.location.href = url
                 },
               }
             : undefined,

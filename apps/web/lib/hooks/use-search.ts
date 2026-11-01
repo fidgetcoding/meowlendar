@@ -226,10 +226,16 @@ export function useSearch(
       }
 
       if (searchTypes.includes('booking_link')) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+
         searches.push(
           Promise.resolve(supabase
             .from('booking_links')
             .select('id, name, slug, created_at')
+            .eq('user_id', user.id)
             .or(`name.ilike.${pattern},slug.ilike.${pattern}`)
             .limit(20)
             .then(({ data, error }) => {
