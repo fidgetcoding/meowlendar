@@ -304,13 +304,13 @@ describe('updateEventSchema', () => {
   it('accepts scope_dates as string array', () => {
     const result = updateEventSchema.safeParse({
       scope: 'custom',
-      scope_dates: ['2026-06-15', '2026-06-22'],
+      scope_dates: ['2026-06-15T10:00:00.000Z', '2026-06-22T10:00:00.000Z'],
     })
     expect(result.success).toBe(true)
   })
 
   it('enforces scope_dates max of 366', () => {
-    const scope_dates = Array.from({ length: 367 }, (_, i) => `2026-${String(i).padStart(4, '0')}`)
+    const scope_dates = Array.from({ length: 367 }, () => '2026-06-15T10:00:00.000Z')
     const result = updateEventSchema.safeParse({ scope: 'custom', scope_dates })
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.path).toEqual(['scope_dates'])

@@ -5,6 +5,7 @@ import {
   createGoogleEvent,
   deleteGoogleEvent,
 } from '../../../lib/google/calendar'
+import { googleRecurrence } from '@/lib/recurrence'
 
 export async function POST(request: NextRequest) {
   const auth = await authenticate(request)
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
         .select('google_account_id, google_calendar_id')
         .eq('id', source.calendar_id)
         .single()
-      if (cal) {
+      if (cal?.google_account_id && cal.google_calendar_id) {
         try {
           await deleteGoogleEvent(cal.google_account_id, cal.google_calendar_id, source.google_event_id)
         } catch { /* best effort */ }
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
         .select('google_account_id, google_calendar_id')
         .eq('id', source.calendar_id)
         .single()
-      if (cal) {
+      if (cal?.google_account_id && cal.google_calendar_id) {
         try {
           await deleteGoogleEvent(cal.google_account_id, cal.google_calendar_id, source.google_event_id)
         } catch { /* best effort */ }
@@ -188,6 +189,11 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // A local calendar has nothing to push to. The database keeps its events
+      // marked synced, so landing in the catch below does no harm.
+      if (!cal.google_account_id || !cal.google_calendar_id) {
+        throw new Error('Local calendar')
+      }
       const googleResult = await createGoogleEvent(
         cal.google_account_id,
         cal.google_calendar_id,
@@ -360,6 +366,11 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // A local calendar has nothing to push to. The database keeps its events
+      // marked synced, so landing in the catch below does no harm.
+      if (!cal.google_account_id || !cal.google_calendar_id) {
+        throw new Error('Local calendar')
+      }
       const googleResult = await createGoogleEvent(
         cal.google_account_id,
         cal.google_calendar_id,
@@ -369,7 +380,7 @@ export async function POST(request: NextRequest) {
           start: { dateTime: startDate.toISOString(), timeZone: source.timezone || 'America/New_York' },
           end: { dateTime: endDate.toISOString(), timeZone: source.timezone || 'America/New_York' },
           location: source.location || undefined,
-          recurrence: source.recurrence_rule ? [source.recurrence_rule] : undefined,
+          recurrence: source.recurrence_rule ? googleRecurrence(source.recurrence_rule) : undefined,
         }
       )
 

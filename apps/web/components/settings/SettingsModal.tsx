@@ -39,6 +39,8 @@ import type {
   GoogleAccount,
   Calendar as CalendarType,
 } from '@poolendar/types'
+import { useQueryClient } from '@tanstack/react-query'
+import { calendarKeys } from '@/lib/hooks/use-calendars'
 
 export type SettingsTab =
   | 'shortcuts'
@@ -163,6 +165,7 @@ export function SettingsModal({
   initialTab,
 }: SettingsModalProps) {
   const supabase = createClient()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<SettingsTab>('shortcuts')
 
   // Deep-link: focus the requested tab whenever the modal (re)opens.
@@ -209,13 +212,14 @@ export function SettingsModal({
     try {
       const res = await fetch('/api/calendars')
       if (!res.ok) return
-      const { accounts } = (await res.json()) as {
+      const { accounts, local_calendars: localCalendars } = (await res.json()) as {
         accounts: (GoogleAccount & { calendars: CalendarType[] })[]
+        local_calendars?: CalendarType[]
       }
       setGoogleAccounts(
         accounts.map((account) => omit(account, ['calendars']))
       )
-      setCalendars(accounts.flatMap((a) => a.calendars ?? []))
+      setCalendars([...accounts.flatMap((a) => a.calendars ?? []), ...(localCalendars ?? [])])
     } catch {
       // Non-fatal — the tab shows an empty state until reloaded.
     }
@@ -248,6 +252,20 @@ export function SettingsModal({
       loadCalendars()
     } else {
       toast.error('Failed to update calendar')
+    }
+  }
+
+  async function changeLocalCalendar(url: string, method: string, body?: unknown, failure = 'Failed to update calendar') {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    if (res.ok) {
+      loadCalendars()
+      queryClient.invalidateQueries({ queryKey: calendarKeys.all })
+    } else {
+      toast.error(failure)
     }
   }
 
@@ -497,6 +515,15 @@ export function SettingsModal({
                   onDisconnect={handleDisconnectAccount}
                   onToggleCalendar={handleToggleCalendar}
                   onResync={handleResyncAccount}
+                  onCreateLocal={(name) =>
+                    changeLocalCalendar('/api/calendars', 'POST', { name }, 'Failed to create calendar')
+                  }
+                  onRenameLocal={(id, name) =>
+                    changeLocalCalendar(`/api/calendars/${id}`, 'PATCH', { name })
+                  }
+                  onDeleteLocal={(id) =>
+                    changeLocalCalendar(`/api/calendars/${id}`, 'DELETE', undefined, 'Failed to delete calendar')
+                  }
                 />
               )}
               {activeTab === 'video' && <VideoConferencingTab />}

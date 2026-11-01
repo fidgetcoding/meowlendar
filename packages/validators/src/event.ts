@@ -29,12 +29,19 @@ export const createEventSchema = z.object({
 })
 
 export const updateEventSchema = partialUpdate(createEventSchema).extend({
-  // Recurrence edit scope — controls which occurrences are affected
-  // TODO: implement occurrence-level edits when recurrence_id splitting is built
+  // Which occurrences of a recurring event this edit touches. `occurrence_start`
+  // names the one being edited; `scope_dates` lists them for 'custom'.
   scope: z.enum(['single', 'future', 'all', 'custom']).optional(),
-  scope_dates: z.array(z.string()).max(366).optional(),
+  occurrence_start: z.string().datetime().optional(),
+  scope_dates: z.array(z.string().datetime()).max(366).optional(),
 })
 
 export const rsvpSchema = z.object({
   response: z.enum(['accepted', 'declined', 'tentative']),
+})
+
+export const deleteEventQuerySchema = z.object({
+  scope: z.enum(['single', 'future', 'all', 'custom']).optional(),
+  occurrence_start: z.string().datetime().optional(),
+  scope_dates: z.array(z.string().datetime()).max(366).optional(),
 })

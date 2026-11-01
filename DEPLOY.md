@@ -22,7 +22,7 @@ Open http://localhost:3000, click **Sign up**, and create an account with any em
 
 Use `localhost`, not `127.0.0.1`, in the browser. Sessions are per host and the Google callback uses `NEXT_PUBLIC_APP_URL`.
 
-**Without Google you get tasks, the board, and booking links, but no events.** Every event belongs to a calendar, and calendars only come from a connected Google account.
+**You don't need Google.** Every account starts with a local calendar. Events, recurring events, tasks, routines, the board, booking links and the MCP all work on it. Add more under **Settings > Calendars**.
 
 ## 2. Google Cloud setup
 

@@ -1,6 +1,7 @@
 import { format, parseISO, setHours, setMinutes } from 'date-fns'
 import type { CalendarEvent, Task, Routine, Calendar } from '@poolendar/types'
 import type { CalendarItemData } from './calendar-types'
+import { expandOccurrences, occurrenceItemId } from '@/lib/recurrence'
 
 const DAY_CODE_MAP: Record<string, number> = {
   SU: 0,
@@ -30,21 +31,38 @@ export function getCalendarColor(
 
 export function eventsToItems(
   events: CalendarEvent[],
-  calendars: Calendar[]
+  calendars: Calendar[],
+  window: { start: Date; end: Date },
 ): CalendarItemData[] {
   return events
     .filter((e) => e.status !== 'cancelled')
-    .map((event) => ({
-      id: event.id,
-      type: 'event' as const,
-      title: event.title,
-      startTime: parseISO(event.start_time),
-      endTime: parseISO(event.end_time),
-      color: getCalendarColor(calendars, event.calendar_id, event.color_override),
-      isAllDay: event.is_all_day,
-      location: event.location,
-      event,
-    }))
+    .flatMap((event) => {
+      const common = {
+        type: 'event' as const,
+        title: event.title,
+        color: getCalendarColor(calendars, event.calendar_id, event.color_override),
+        isAllDay: event.is_all_day,
+        location: event.location,
+        event,
+      }
+      if (!event.recurrence_rule) {
+        return [
+          {
+            ...common,
+            id: event.id,
+            startTime: parseISO(event.start_time),
+            endTime: parseISO(event.end_time),
+          },
+        ]
+      }
+      // One item per occurrence in view, each carrying which one it is in its id.
+      return expandOccurrences(event, window.start, window.end).map((occurrence) => ({
+        ...common,
+        id: occurrenceItemId(event.id, occurrence.start),
+        startTime: occurrence.start,
+        endTime: occurrence.end,
+      }))
+    })
 }
 
 export function tasksToItems(

@@ -17,6 +17,9 @@ import { PreviewPopover } from './PreviewPopover'
 import { ContextMenu } from './ContextMenu'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
 import { parseRoutineItemId } from './grid-helpers'
+import { parseEventItemId } from '@/lib/recurrence'
+import { useRecurringEventChange } from '@/lib/hooks/use-events'
+import type { RecurrenceEditScope } from './RecurrenceEditDialog'
 
 interface CalendarWorkspaceProps {
   events: CalendarEvent[]
@@ -46,6 +49,7 @@ export function CalendarWorkspace({
 }: CalendarWorkspaceProps) {
   const store = useCalendarStore()
   const { openEditForm } = useUIStore()
+  const recurringChange = useRecurringEventChange()
 
   const undoable = useUndoable()
 
@@ -81,7 +85,6 @@ export function CalendarWorkspace({
   function createRoutineRow(
     over: Partial<Routine> & { title: string }
   ) {
-    if (!userId) return
     undoable.createRoutine({
       user_id: userId,
       calendar_id: over.calendar_id ?? defaultCalendarId,
@@ -106,8 +109,19 @@ export function CalendarWorkspace({
     newEnd: Date
   ) {
     if (itemType === 'event') {
-      const prev = events.find((e) => e.id === itemId)
+      const { eventId, occurrenceStart } = parseEventItemId(itemId)
+      const prev = events.find((e) => e.id === eventId)
       if (!prev) return
+      // Dragging one occurrence moves just that occurrence.
+      if (occurrenceStart) {
+        recurringChange.mutate({
+          id: eventId,
+          scope: 'single',
+          occurrenceStart,
+          patch: { start_time: newStart.toISOString(), end_time: newEnd.toISOString() },
+        })
+        return
+      }
       undoable.updateEvent(
         itemId,
         {
@@ -140,8 +154,18 @@ export function CalendarWorkspace({
 
   function handleResize(itemId: string, itemType: CalendarItemType, newEnd: Date) {
     if (itemType === 'event') {
-      const prev = events.find((e) => e.id === itemId)
+      const { eventId, occurrenceStart } = parseEventItemId(itemId)
+      const prev = events.find((e) => e.id === eventId)
       if (!prev) return
+      if (occurrenceStart) {
+        recurringChange.mutate({
+          id: eventId,
+          scope: 'single',
+          occurrenceStart,
+          patch: { start_time: occurrenceStart, end_time: newEnd.toISOString() },
+        })
+        return
+      }
       undoable.updateEvent(
         itemId,
         { end_time: newEnd.toISOString(), sync_status: 'pending_push' },
@@ -165,7 +189,6 @@ export function CalendarWorkspace({
     startTime: Date,
     endTime?: Date
   ) {
-    if (!userId) return
     const end = endTime ?? new Date(startTime.getTime() + store.defaultTaskDuration * 60000)
 
     if (type === 'event') {
@@ -265,7 +288,11 @@ export function CalendarWorkspace({
   function handleItemClick(item: CalendarItemData, anchorRect?: DOMRect) {
     // Track the clicked item as the keyboard selection (E / ⇧R / ⇧S / Delete).
     const selectionId =
-      item.type === 'routine' ? parseRoutineItemId(item.id).routineId : item.id
+      item.type === 'routine'
+        ? parseRoutineItemId(item.id).routineId
+        : item.type === 'event'
+          ? parseEventItemId(item.id).eventId
+          : item.id
     store.selectItem(selectionId, item.type)
     const calId =
       item.event?.calendar_id ?? item.task?.calendar_id ?? item.routine?.calendar_id ?? null
@@ -310,8 +337,17 @@ export function CalendarWorkspace({
   }
 
   // ---- preview actions ----
-  function deleteBySource(source: CalendarItemData) {
+  function deleteBySource(source: CalendarItemData, scope?: RecurrenceEditScope) {
     if (source.type === 'event' && source.event) {
+      if (scope && source.event.recurrence_rule) {
+        recurringChange.mutate({
+          id: source.event.id,
+          scope: scope.type,
+          occurrenceStart: parseEventItemId(source.id).occurrenceStart,
+          dates: scope.type === 'custom' ? scope.dates : undefined,
+        })
+        return
+      }
       undoable.deleteEvent(source.event)
     } else if (source.type === 'task' && source.task) {
       undoable.deleteTask(source.task)
@@ -358,13 +394,13 @@ export function CalendarWorkspace({
           item={preview.item}
           anchorRect={preview.anchorRect}
           onClose={() => setPreview(null)}
-          onEdit={() => {
+          onEdit={(scope) => {
             const src = preview.source
             setPreview(null)
-            openEditForm(src.id, src.type)
+            openEditForm(src.id, src.type, undefined, undefined, scope?.type ?? null)
           }}
-          onDelete={() => {
-            deleteBySource(preview.source)
+          onDelete={(scope) => {
+            deleteBySource(preview.source, scope)
             setPreview(null)
           }}
           onComplete={() => {

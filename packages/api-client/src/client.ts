@@ -61,7 +61,8 @@ export class PoolendarClient {
   }
 
   // Calendars
-  async listCalendars() { return this.request<{ accounts: CalendarAccount[] }>('/api/calendars') }
+  async listCalendars() { return this.request<{ accounts: CalendarAccount[]; local_calendars?: Calendar[] }>('/api/calendars') }
+  async createCalendar(data: { name: string; color?: string }) { return this.request<Calendar>('/api/calendars', { method: 'POST', body: JSON.stringify(data) }) }
 
   // Events — unions events + scheduled tasks (+ routine instances) in the window
   // per spec #22. Each item carries a `kind` discriminator. `include` narrows
@@ -81,7 +82,13 @@ export class PoolendarClient {
   async getEvent(id: string) { return this.request<CalendarEvent>(`/api/events/${seg(id)}`) }
   async createEvent(data: Partial<CalendarEvent>) { return this.request<CalendarEvent>('/api/events', { method: 'POST', body: JSON.stringify(data) }) }
   async updateEvent(id: string, data: Partial<CalendarEvent>) { return this.request<CalendarEvent>(`/api/events/${seg(id)}`, { method: 'PATCH', body: JSON.stringify(data) }) }
-  async deleteEvent(id: string) { return this.request<void>(`/api/events/${seg(id)}`, { method: 'DELETE' }) }
+  async deleteEvent(id: string, options?: { scope?: 'single' | 'future' | 'all'; occurrence_start?: string }) {
+    const sp = new URLSearchParams()
+    if (options?.scope) sp.set('scope', options.scope)
+    if (options?.occurrence_start) sp.set('occurrence_start', options.occurrence_start)
+    const q = sp.toString()
+    return this.request<void>(`/api/events/${seg(id)}${q ? `?${q}` : ''}`, { method: 'DELETE' })
+  }
   async rsvpEvent(eventId: string, data: { response: 'accepted' | 'declined' | 'tentative' }) {
     return this.request(`/api/events/${seg(eventId)}/rsvp`, { method: 'POST', body: JSON.stringify(data) })
   }

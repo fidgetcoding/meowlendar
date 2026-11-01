@@ -29,6 +29,8 @@ export interface CalendarEvent {
   conferencing_url: string | null
   recurrence_rule: string | null
   recurrence_id: string | null
+  /** Occurrences removed from this series. */
+  recurrence_exceptions?: string[] | null
   attendees: EventAttendee[]
   reminders: EventReminder[]
   status: EventStatus

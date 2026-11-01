@@ -16,6 +16,7 @@ import type {
   GoogleEventInsert,
   GoogleEventWrite,
 } from './types'
+import { googleRecurrence, parseExceptionLines } from '../recurrence'
 
 /** Calendar events carry retry bookkeeping columns that are not on CalendarEvent. */
 type PendingPushEvent = CalendarEvent & { retry_count: number | null }
@@ -137,6 +138,7 @@ export function mapGoogleEventToLocal(
     conferencing_url: conferencingUrl,
     recurrence_rule: recurrenceRule,
     recurrence_id: googleEvent.recurringEventId ?? null,
+    recurrence_exceptions: parseExceptionLines(googleEvent.recurrence),
     attendees,
     reminders,
     status,
@@ -196,11 +198,7 @@ export function mapLocalEventToGoogle(event: CalendarEvent): GoogleEventInsert {
   }
 
   if (event.recurrence_rule) {
-    // If the rule already has RRULE: prefix, use as-is; otherwise prefix it
-    const rule = event.recurrence_rule.startsWith('RRULE:')
-      ? event.recurrence_rule
-      : `RRULE:${event.recurrence_rule}`
-    googleEvent.recurrence = [rule]
+    googleEvent.recurrence = googleRecurrence(event.recurrence_rule, event.recurrence_exceptions)
   }
 
   if (event.color_override) {
@@ -495,6 +493,10 @@ export async function pushEvent(
   event: CalendarEvent,
   calendar: Calendar
 ): Promise<CalendarEvent> {
+  const { google_account_id: accountId, google_calendar_id: googleCalendarId } = calendar
+  if (!accountId || !googleCalendarId) {
+    throw new Error('Cannot push to a local calendar')
+  }
   const supabase = getServiceClient()
   const googlePayload = mapLocalEventToGoogle(event)
 
@@ -504,8 +506,8 @@ export async function pushEvent(
     // Update existing Google event
     try {
       googleResponse = await updateGoogleEventWithEtag(
-        calendar.google_account_id,
-        calendar.google_calendar_id,
+        accountId,
+        googleCalendarId,
         event.google_event_id,
         googlePayload,
         event.etag
@@ -515,8 +517,8 @@ export async function pushEvent(
       if (status === 412 || errorMessageIncludes(err, '412')) {
         // ETag conflict — fetch latest from Google, merge, re-push
         googleResponse = await resolveConflict(
-          calendar.google_account_id,
-          calendar.google_calendar_id,
+          accountId,
+          googleCalendarId,
           event.google_event_id,
           event,
           googlePayload
@@ -528,8 +530,8 @@ export async function pushEvent(
   } else {
     // Create new event on Google
     googleResponse = await createGoogleEvent(
-      calendar.google_account_id,
-      calendar.google_calendar_id,
+      accountId,
+      googleCalendarId,
       googlePayload,
       Boolean(event.conferencing_url)
     )
@@ -654,7 +656,7 @@ export async function deleteRemoteEvent(
   event: CalendarEvent,
   calendar: Calendar
 ): Promise<void> {
-  if (!event.google_event_id) {
+  if (!event.google_event_id || !calendar.google_account_id || !calendar.google_calendar_id) {
     return // Nothing to delete on Google's side
   }
 

@@ -28,6 +28,7 @@ import {
   type BookingLinkRecord,
 } from '@/lib/booking/notify'
 import { createBookingGoogleEvent } from '@/lib/booking/google-event'
+import { eventsInWindowFilter, expandOccurrences } from '@/lib/recurrence'
 
 type RouteParams = { params: Promise<{ slug: string }> }
 
@@ -203,11 +204,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const { data: poolEvents, error: eventsError } = await supabase
     .from('events')
-    .select('start_time, end_time')
+    .select('start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions')
     .eq('user_id', link.user_id)
     .neq('status', 'cancelled')
-    .lt('start_time', windowEnd)
-    .gt('end_time', windowStart)
+    .or(eventsInWindowFilter(windowStart, windowEnd))
 
   if (eventsError) {
     return NextResponse.json({ error: 'Failed to check calendar availability' }, { status: 500 })
@@ -227,7 +227,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const blocked = computeBlockedIntervals({
     bookings: busyBookings,
-    events: poolEvents ?? [],
+    events: (poolEvents ?? []).flatMap((e) =>
+      expandOccurrences(e, new Date(windowStart), new Date(windowEnd)).map((o) => ({
+        start_time: o.start.toISOString(),
+        end_time: o.end.toISOString(),
+      })),
+    ),
     googleBusy,
     currentBufferMinutes: link.buffer_minutes,
   })

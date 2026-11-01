@@ -63,10 +63,20 @@ export function useCreateRoutine() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: CreateRoutineInput): Promise<Routine> => {
+    mutationFn: async (input: CreateRoutineInput & { user_id?: string | null }): Promise<Routine> => {
+      const { user_id, ...rest } = input
+      // Never drop a create because the profile query is still in flight.
+      let ownerId = user_id ?? null
+      if (!ownerId) {
+        const { data: auth, error: authError } = await supabase.auth.getUser()
+        if (authError) throw authError
+        if (!auth.user) throw new Error('Not authenticated')
+        ownerId = auth.user.id
+      }
+
       const { data, error } = await supabase
         .from('routines')
-        .insert(input)
+        .insert({ ...rest, user_id: ownerId })
         .select('*')
         .single()
 

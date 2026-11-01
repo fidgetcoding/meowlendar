@@ -11,8 +11,11 @@ export interface GoogleAccount {
 export interface Calendar {
   id: string
   user_id: string
-  google_account_id: string
-  google_calendar_id: string
+  /** Null on a local calendar. */
+  google_account_id: string | null
+  /** Null on a local calendar. */
+  google_calendar_id: string | null
+  source: 'google' | 'local'
   name: string
   color: string
   is_primary: boolean

@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { format, isToday, getDay, getISOWeek } from 'date-fns'
+import { endOfDay, format, isToday, getDay, getISOWeek, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarEvent, Task, Routine, Calendar } from '@poolendar/types'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
@@ -164,7 +164,9 @@ export function CalendarGrid({
   }, [currentDate, view, customDays, showWeekends])
 
   const allItems = React.useMemo(() => {
-    let eventItems = eventsToItems(events, calendars)
+    const windowStart = startOfDay(visibleDays[0] ?? currentDate)
+    const windowEnd = endOfDay(visibleDays[visibleDays.length - 1] ?? currentDate)
+    let eventItems = eventsToItems(events, calendars, { start: windowStart, end: windowEnd })
     if (!showDeclinedEvents) {
       eventItems = eventItems.filter(
         (i) => !(i.event && isDeclinedEvent(i.event, selfEmails))
@@ -183,7 +185,7 @@ export function CalendarGrid({
       combined = mergeDuplicateEventItems(combined)
     }
     return combined
-  }, [
+  }, [currentDate, 
     events,
     tasks,
     routines,

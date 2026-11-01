@@ -2,6 +2,7 @@ export {
   createEventSchema,
   updateEventSchema,
   rsvpSchema,
+  deleteEventQuerySchema,
 } from './event'
 export {
   createTaskSchema,

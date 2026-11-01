@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CalendarEvent } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
+import { eventsInWindowFilter } from '@/lib/recurrence'
 
 // ---------------------------------------------------------------------------
 // Query-key factory
@@ -20,7 +21,9 @@ export const eventKeys = {
 // Input types
 // ---------------------------------------------------------------------------
 
-export type CreateEventInput = Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at'>
+export type CreateEventInput = Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at' | 'user_id'> & {
+  user_id?: string | null
+}
 
 export type UpdateEventInput = {
   id: string
@@ -40,8 +43,7 @@ export function useEvents(start: string, end: string, calendarId?: string) {
       let query = supabase
         .from('events')
         .select('*')
-        .lte('start_time', end)
-        .gte('end_time', start)
+        .or(eventsInWindowFilter(start, end))
         .order('start_time', { ascending: true })
 
       if (calendarId) {
@@ -88,10 +90,19 @@ export function useCreateEvent() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: CreateEventInput): Promise<CalendarEvent> => {
+    mutationFn: async ({ user_id, ...rest }: CreateEventInput): Promise<CalendarEvent> => {
+      // Never drop a create because the profile query is still in flight.
+      let ownerId = user_id ?? null
+      if (!ownerId) {
+        const { data: auth, error: authError } = await supabase.auth.getUser()
+        if (authError) throw authError
+        if (!auth.user) throw new Error('Not authenticated')
+        ownerId = auth.user.id
+      }
+
       const { data, error } = await supabase
         .from('events')
-        .insert(input)
+        .insert({ ...rest, user_id: ownerId })
         .select('*')
         .single()
 
@@ -109,6 +120,7 @@ export function useCreateEvent() {
       const tempId = crypto.randomUUID()
       const optimistic: CalendarEvent = {
         ...input,
+        user_id: input.user_id ?? '',
         id: tempId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -263,6 +275,51 @@ export function useDeleteEvent() {
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: eventKeys.lists() })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// useRecurringEventChange: edits and deletes that touch part of a series. The
+// server does the split, so these go through the API rather than Supabase.
+// ---------------------------------------------------------------------------
+
+export interface RecurringEventChange {
+  id: string
+  scope: 'single' | 'future' | 'all' | 'custom'
+  occurrenceStart?: string | null
+  dates?: string[]
+  /** Fields to change. Leave out to delete. */
+  patch?: Record<string, unknown>
+}
+
+export function useRecurringEventChange() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, scope, occurrenceStart, dates, patch }: RecurringEventChange) => {
+      let res: Response
+      if (patch) {
+        res = await fetch(`/api/events/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...patch,
+            scope,
+            occurrence_start: occurrenceStart ?? undefined,
+            scope_dates: dates,
+          }),
+        })
+      } else {
+        const params = new URLSearchParams({ scope })
+        if (occurrenceStart) params.set('occurrence_start', occurrenceStart)
+        for (const date of dates ?? []) params.append('scope_dates', date)
+        res = await fetch(`/api/events/${encodeURIComponent(id)}?${params}`, { method: 'DELETE' })
+      }
+      if (!res.ok) throw new Error('Failed to change the recurring event')
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
     },
   })
 }

@@ -45,7 +45,7 @@ The server wraps the Meowlendar REST API. A few highlights:
 - **`list_events`** — a date-range calendar read that returns events **and**
   scheduled tasks (and routine instances) in the window, each tagged with a
   `kind`.
-- **`list_calendars`** — connected Google accounts and their sub-calendars.
+- **`list_calendars`**: your local calendars, plus connected Google accounts and their sub-calendars.
 - **`reflow_day`** — repack a day's flexible tasks so they stop overlapping.
 - Full CRUD for events, tasks, subtasks, routines, tags, and booking links, plus
   type conversion and full-text search.

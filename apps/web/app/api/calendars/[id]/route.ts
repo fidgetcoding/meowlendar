@@ -7,13 +7,14 @@ import { updateGoogleCalendarColor } from '@/lib/google/calendar'
 const patchSchema = z
   .object({
     is_active: z.boolean().optional(),
+    name: z.string().trim().min(1).max(100).optional(),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'color must be a 6-digit hex string')
       .optional(),
   })
-  .refine((v) => v.is_active !== undefined || v.color !== undefined, {
-    message: 'Provide at least one of is_active or color',
+  .refine((v) => v.is_active !== undefined || v.color !== undefined || v.name !== undefined, {
+    message: 'Provide at least one of is_active, color, or name',
   })
 
 /**
@@ -45,7 +46,7 @@ export async function PATCH(
 
   const { data: calendar, error: calError } = await supabase
     .from('calendars')
-    .select('id, google_account_id, google_calendar_id')
+    .select('id, source, google_account_id, google_calendar_id')
     .eq('id', id)
     .eq('user_id', userId)
     .single()
@@ -54,19 +55,30 @@ export async function PATCH(
     return NextResponse.json({ error: 'Calendar not found' }, { status: 404 })
   }
 
-  const updates: { is_active?: boolean; color?: string } = {}
+  // A Google calendar's name belongs to Google and comes back on the next sync.
+  if (parsed.data.name !== undefined && calendar.source !== 'local') {
+    return NextResponse.json(
+      { error: 'Only local calendars can be renamed here' },
+      { status: 409 },
+    )
+  }
+
+  const updates: { is_active?: boolean; color?: string; name?: string } = {}
   if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active
+  if (parsed.data.name !== undefined) updates.name = parsed.data.name
   if (parsed.data.color !== undefined) {
     updates.color = parsed.data.color
-    try {
-      await updateGoogleCalendarColor(
-        calendar.google_account_id,
-        calendar.google_calendar_id,
-        parsed.data.color
-      )
-    } catch (err) {
-      // Local colour is authoritative for rendering — swallow the Google error.
-      console.error('[calendars/PATCH] Google colour push failed (stored locally):', err)
+    if (calendar.google_account_id && calendar.google_calendar_id) {
+      try {
+        await updateGoogleCalendarColor(
+          calendar.google_account_id,
+          calendar.google_calendar_id,
+          parsed.data.color
+        )
+      } catch (err) {
+        // Local colour is authoritative for rendering — swallow the Google error.
+        console.error('[calendars/PATCH] Google colour push failed (stored locally):', err)
+      }
     }
   }
 
@@ -88,9 +100,11 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/calendars/:id — disconnects the google_account that OWNS this
- * calendar (spec semantics: disconnect account), which cascades to all its
- * calendars + events. Ownership verified under RLS first.
+ * DELETE /api/calendars/:id — a local calendar is deleted with its events, and the
+ * user's last local calendar stays so events always have somewhere to go. For a
+ * Google calendar this disconnects the google_account that OWNS it (spec semantics:
+ * disconnect account), which cascades to all its calendars + events. Ownership
+ * verified under RLS first.
  */
 export async function DELETE(
   request: NextRequest,
@@ -104,13 +118,32 @@ export async function DELETE(
 
   const { data: calendar, error: calError } = await supabase
     .from('calendars')
-    .select('google_account_id')
+    .select('source, google_account_id')
     .eq('id', id)
     .eq('user_id', userId)
     .single()
 
   if (calError || !calendar) {
     return NextResponse.json({ error: 'Calendar not found' }, { status: 404 })
+  }
+
+  if (calendar.source === 'local') {
+    const { count } = await supabase
+      .from('calendars')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('source', 'local')
+    if ((count ?? 0) <= 1) {
+      return NextResponse.json(
+        { error: 'You need at least one local calendar' },
+        { status: 409 },
+      )
+    }
+    const { error } = await supabase.from('calendars').delete().eq('id', id).eq('user_id', userId)
+    if (error) {
+      return NextResponse.json({ error: 'Failed to delete calendar' }, { status: 500 })
+    }
+    return NextResponse.json({ success: true })
   }
 
   try {

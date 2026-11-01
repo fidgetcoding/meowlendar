@@ -28,6 +28,7 @@ export interface CalendarAccountGroup {
 
 interface CalendarsResponse {
   accounts: CalendarAccountGroup[]
+  local_calendars?: Calendar[]
 }
 
 /**
@@ -35,13 +36,17 @@ interface CalendarsResponse {
  * Pure so it can be unit-tested without the network.
  */
 export function flattenCalendars(
-  accounts: CalendarAccountGroup[] | undefined | null
+  accounts: CalendarAccountGroup[] | undefined | null,
+  localCalendars?: Calendar[] | null
 ): Calendar[] {
-  return (accounts ?? []).flatMap((account) => account.calendars ?? [])
+  return [
+    ...(accounts ?? []).flatMap((account) => account.calendars ?? []),
+    ...(localCalendars ?? []),
+  ]
 }
 
 // ---------------------------------------------------------------------------
-// useCalendars — flat list of every connected sub-calendar
+// useCalendars — flat list of every calendar: Google sub-calendars, then local
 // ---------------------------------------------------------------------------
 
 export function useCalendars() {
@@ -53,7 +58,7 @@ export function useCalendars() {
         throw new Error(`Failed to load calendars (${res.status})`)
       }
       const json = (await res.json()) as CalendarsResponse
-      return flattenCalendars(json.accounts)
+      return flattenCalendars(json.accounts, json.local_calendars)
     },
   })
 }

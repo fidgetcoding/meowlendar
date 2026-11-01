@@ -13,6 +13,9 @@ interface CalendarsTabProps {
   onDisconnect: (id: string) => void
   onToggleCalendar: (id: string, active: boolean) => void
   onResync: (accountId: string) => void
+  onCreateLocal: (name: string) => void
+  onRenameLocal: (id: string, name: string) => void
+  onDeleteLocal: (id: string) => void
 }
 
 export function CalendarsTab({
@@ -22,11 +25,80 @@ export function CalendarsTab({
   onDisconnect,
   onToggleCalendar,
   onResync,
+  onCreateLocal,
+  onRenameLocal,
+  onDeleteLocal,
 }: CalendarsTabProps) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
+  const [newLocalName, setNewLocalName] = useState('')
+  const localCalendars = calendars.filter((c) => c.source === 'local')
 
   return (
     <>
+      <SettingsSection
+        title="Local Calendars"
+        description="These live in Meowlendar only. No Google account needed."
+      >
+        {localCalendars.map((calendar) => (
+          <div
+            key={calendar.id}
+            className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2"
+          >
+            <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: calendar.color }} />
+            <input
+              aria-label={`Name of ${calendar.name}`}
+              defaultValue={calendar.name}
+              maxLength={100}
+              onBlur={(e) => {
+                const name = e.target.value.trim()
+                if (name && name !== calendar.name) onRenameLocal(calendar.id, name)
+              }}
+              className="min-w-0 flex-1 bg-transparent text-sm text-[var(--fg)] outline-none"
+            />
+            <SettingsToggle
+              label={`Show ${calendar.name}`}
+              checked={calendar.is_active}
+              onChange={(active) => onToggleCalendar(calendar.id, active)}
+            />
+            {localCalendars.length > 1 && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Delete ${calendar.name} and all its events?`)) {
+                    onDeleteLocal(calendar.id)
+                  }
+                }}
+                aria-label={`Delete ${calendar.name}`}
+                className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--destructive)]"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <input
+            aria-label="New local calendar name"
+            placeholder="New calendar name"
+            value={newLocalName}
+            maxLength={100}
+            onChange={(e) => setNewLocalName(e.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--fg)] outline-none"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!newLocalName.trim()}
+            onClick={() => {
+              onCreateLocal(newLocalName.trim())
+              setNewLocalName('')
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
+        </div>
+      </SettingsSection>
+
       <SettingsSection
         title="Connected Accounts"
         description="Connect Google accounts to sync calendars"

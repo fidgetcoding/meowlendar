@@ -4,7 +4,8 @@ import { createGoogleEvent } from '../../../lib/google/calendar'
 import type { GoogleEventInsert } from '../../../lib/google/types'
 import { createEventSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
-import type { CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
+import { eventsInWindowFilter, expandOccurrences, googleRecurrence, isValidRecurrenceRule } from '../../../lib/recurrence'
+import type { CalendarEvent, CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
 
 // The kinds `GET /api/events` can return. `events` is always included (this is
 // the events endpoint); `tasks` and `routines` are on by default and can be
@@ -59,13 +60,15 @@ export async function GET(request: NextRequest) {
   const items: CalendarItem[] = []
 
   // --- Events ---------------------------------------------------------------
+  // A series can have occurrences here long after its first one, so those rows are
+  // fetched by rule and expanded. Each occurrence keeps the series id and says which
+  // one it is in `occurrence_start`, for scoped edits and deletes.
   if (wantEvents) {
     let query = supabase
       .from('events')
       .select('*')
       .eq('user_id', userId)
-      .gte('start_time', start)
-      .lte('end_time', end)
+      .or(eventsInWindowFilter(start, end))
       .order('start_time', { ascending: true })
 
     if (calendarId) query = query.eq('calendar_id', calendarId)
@@ -74,7 +77,23 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 })
     }
-    for (const e of data ?? []) items.push({ ...(e as object), kind: 'event' } as CalendarItem)
+    const windowStart = new Date(start)
+    const windowEnd = new Date(end)
+    for (const e of (data ?? []) as CalendarEvent[]) {
+      if (!e.recurrence_rule) {
+        items.push({ ...e, kind: 'event' } as CalendarItem)
+        continue
+      }
+      for (const occurrence of expandOccurrences(e, windowStart, windowEnd)) {
+        items.push({
+          ...e,
+          kind: 'event',
+          start_time: occurrence.start.toISOString(),
+          end_time: occurrence.end.toISOString(),
+          occurrence_start: occurrence.start.toISOString(),
+        } as CalendarItem)
+      }
+    }
   }
 
   // --- Scheduled tasks (spec #22) -------------------------------------------
@@ -178,7 +197,7 @@ export async function POST(request: NextRequest) {
   // Verify the calendar belongs to this user
   const { data: calendar, error: calendarError } = await supabase
     .from('calendars')
-    .select('id, google_account_id, google_calendar_id')
+    .select('id, source, google_account_id, google_calendar_id')
     .eq('id', input.calendar_id)
     .eq('user_id', userId)
     .single()
@@ -188,6 +207,10 @@ export async function POST(request: NextRequest) {
       { error: 'Calendar not found or access denied' },
       { status: 404 }
     )
+  }
+
+  if (input.recurrence_rule && !isValidRecurrenceRule(input.recurrence_rule)) {
+    return NextResponse.json({ error: 'recurrence_rule is not a valid RRULE' }, { status: 422 })
   }
 
   // Build the event row
@@ -225,6 +248,12 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // A local calendar has nothing to sync to.
+  if (calendar.source === 'local' || !calendar.google_account_id || !calendar.google_calendar_id) {
+    return NextResponse.json(event, { status: 201 })
+  }
+  const { google_account_id: googleAccountId, google_calendar_id: googleCalendarId } = calendar
+
   // Sync to Google Calendar
   try {
     const googleEventBody: GoogleEventInsert = {
@@ -249,7 +278,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (input.recurrence_rule) {
-      googleEventBody.recurrence = [input.recurrence_rule]
+      googleEventBody.recurrence = googleRecurrence(input.recurrence_rule)
     }
 
     if (input.reminders.length > 0) {
@@ -263,8 +292,8 @@ export async function POST(request: NextRequest) {
     }
 
     const googleResult = await createGoogleEvent(
-      calendar.google_account_id,
-      calendar.google_calendar_id,
+      googleAccountId,
+      googleCalendarId,
       googleEventBody,
       input.conferencing
     )

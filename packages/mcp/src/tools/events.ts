@@ -146,6 +146,17 @@ export function getEventToolDefinitions(): ToolDefinition[] {
       inputSchema: {
         type: 'object' as const,
         properties: {
+          scope: {
+            type: 'string',
+            enum: ['single', 'future', 'all'],
+            description:
+              'For a recurring event: this occurrence, this one and later, or the whole series. Leave out for a non-recurring event.',
+          },
+          occurrence_start: {
+            type: 'string',
+            description:
+              'For a recurring event: which occurrence, as the occurrence_start value from list_events. Needed for single and future.',
+          },
           id: {
             type: 'string',
             description: 'The UUID of the event to update.',
@@ -205,6 +216,17 @@ export function getEventToolDefinitions(): ToolDefinition[] {
           id: {
             type: 'string',
             description: 'The UUID of the event to delete.',
+          },
+          scope: {
+            type: 'string',
+            enum: ['single', 'future', 'all'],
+            description:
+              'For a recurring event: this occurrence, this one and later, or the whole series. Leave out for a non-recurring event.',
+          },
+          occurrence_start: {
+            type: 'string',
+            description:
+              'For a recurring event: which occurrence, as the occurrence_start value from list_events. Needed for single and future.',
           },
         },
         required: ['id'],
@@ -277,7 +299,10 @@ export function getEventToolHandlers(client: PoolendarClient): Record<string, To
     },
 
     delete_event: async (args) => {
-      await client.deleteEvent(args.id as string)
+      await client.deleteEvent(args.id as string, {
+        scope: args.scope as 'single' | 'future' | 'all' | undefined,
+        occurrence_start: args.occurrence_start as string | undefined,
+      })
       return JSON.stringify({ success: true, message: 'Event deleted successfully.' })
     },
 

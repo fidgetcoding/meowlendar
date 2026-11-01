@@ -332,7 +332,7 @@ export function useUndoable() {
   // Routines
   // -----------------------------------------------------------------------
 
-  function createRoutine(input: CreateRoutineInput & { user_id: string }) {
+  function createRoutine(input: CreateRoutineInput & { user_id?: string | null }) {
     let createdId: string | null = null
     pushOperation({
       type: 'create',

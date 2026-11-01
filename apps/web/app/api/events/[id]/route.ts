@@ -3,10 +3,24 @@ import { authenticate, isAuthError, validationError } from '../../../../lib/auth
 import { updateGoogleEvent, deleteGoogleEvent } from '../../../../lib/google/calendar'
 import type { GoogleEventWrite } from '../../../../lib/google/types'
 import { omit } from '../../../../lib/omit'
-import { updateEventSchema } from '@poolendar/validators'
+import { deleteEventQuerySchema, updateEventSchema } from '@poolendar/validators'
+import { googleRecurrence, isValidRecurrenceRule } from '../../../../lib/recurrence'
+import { applyScopedDelete, applyScopedEdit } from '../../../../lib/recurrence-edit'
 
 interface RouteParams {
   params: Promise<{ id: string }>
+}
+
+function scopeInputProblem(
+  scope: string,
+  occurrenceStart: string | undefined,
+  dates: string[] | undefined,
+): string | null {
+  if ((scope === 'single' || scope === 'future') && !occurrenceStart) {
+    return `scope '${scope}' needs occurrence_start`
+  }
+  if (scope === 'custom' && !dates?.length) return "scope 'custom' needs scope_dates"
+  return null
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -72,10 +86,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Build the update object, omitting non-DB fields. The recurrence scope is
-  // accepted but not applied yet.
-  // TODO: implement occurrence-level edits when recurrence_id splitting is built
-  const dbFields = omit(input, ['conferencing', 'scope', 'scope_dates'])
+  // Build the update object, omitting non-DB fields.
+  const dbFields = omit(input, ['conferencing', 'scope', 'scope_dates', 'occurrence_start'])
   const updateFields: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(dbFields)) {
@@ -85,6 +97,29 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   updateFields.updated_at = new Date().toISOString()
+
+  if (typeof input.recurrence_rule === 'string' && !isValidRecurrenceRule(input.recurrence_rule)) {
+    return NextResponse.json({ error: 'recurrence_rule is not a valid RRULE' }, { status: 422 })
+  }
+
+  // Part of a recurring series goes through the scoped path. An unscoped edit of a
+  // series is an edit of the whole series, as it always was.
+  if (input.scope && existing.recurrence_rule) {
+    const scopeProblem = scopeInputProblem(input.scope, input.occurrence_start, input.scope_dates)
+    if (scopeProblem) return NextResponse.json({ error: scopeProblem }, { status: 422 })
+    try {
+      const result = await applyScopedEdit(supabase, existing, {
+        scope: input.scope,
+        occurrenceStart: input.occurrence_start,
+        dates: input.scope_dates,
+        patch: updateFields,
+      })
+      return NextResponse.json(result)
+    } catch (err) {
+      console.error('[events/PATCH] scoped edit failed:', err)
+      return NextResponse.json({ error: 'Failed to update event' }, { status: 500 })
+    }
+  }
 
   // Update in Supabase (RLS-scoped; user_id filter is defense-in-depth)
   const { data: updatedEvent, error: updateError } = await supabase
@@ -149,7 +184,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       if (input.recurrence_rule !== undefined) {
         googlePatch.recurrence = input.recurrence_rule
-          ? [input.recurrence_rule]
+          ? googleRecurrence(input.recurrence_rule, existing.recurrence_exceptions)
           : []
       }
 
@@ -167,8 +202,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       if (Object.keys(googlePatch).length > 0) {
         const googleResult = await updateGoogleEvent(
-          calendar.google_account_id,
-          calendar.google_calendar_id,
+          calendar.google_account_id as string,
+          calendar.google_calendar_id as string,
           existing.google_event_id,
           googlePatch
         )
@@ -206,9 +241,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { userId, supabase } = auth
   const { id } = await params
 
-  // A request body's recurrence scope is ignored for now: DELETE always removes
-  // the whole event.
-  // TODO: implement occurrence-level deletes when recurrence_id splitting is built
+  const { searchParams } = request.nextUrl
+  const parsedQuery = deleteEventQuerySchema.safeParse({
+    scope: searchParams.get('scope') ?? undefined,
+    occurrence_start: searchParams.get('occurrence_start') ?? undefined,
+    scope_dates: searchParams.getAll('scope_dates').length ? searchParams.getAll('scope_dates') : undefined,
+  })
+  if (!parsedQuery.success) return validationError(parsedQuery.error.issues)
+  const deleteOptions = parsedQuery.data
 
   // Fetch the event to verify ownership and get Google IDs
   const { data: event, error: fetchError } = await supabase
@@ -225,6 +265,27 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     )
   }
 
+  // Part of a series comes out of the master row. It stays, unless nothing is left.
+  if (deleteOptions.scope && event.recurrence_rule) {
+    const scopeProblem = scopeInputProblem(
+      deleteOptions.scope,
+      deleteOptions.occurrence_start,
+      deleteOptions.scope_dates,
+    )
+    if (scopeProblem) return NextResponse.json({ error: scopeProblem }, { status: 422 })
+    try {
+      const { deleteMaster } = await applyScopedDelete(supabase, event, {
+        scope: deleteOptions.scope,
+        occurrenceStart: deleteOptions.occurrence_start,
+        dates: deleteOptions.scope_dates,
+      })
+      if (!deleteMaster) return new NextResponse(null, { status: 204 })
+    } catch (err) {
+      console.error('[events/DELETE] scoped delete failed:', err)
+      return NextResponse.json({ error: 'Failed to delete event' }, { status: 500 })
+    }
+  }
+
   // Delete from Google Calendar if synced
   if (event.google_event_id) {
     try {
@@ -237,6 +298,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       // Google delete failed -- proceed with local delete anyway.
       // The event is already gone from the user's perspective.
     }
+  }
+
+  // Occurrences pulled out of this series go with it when the whole series goes.
+  if (event.recurrence_rule) {
+    await supabase.from('events').delete().eq('recurrence_id', id).eq('user_id', userId)
   }
 
   // Delete from Supabase (RLS-scoped; user_id filter is defense-in-depth)

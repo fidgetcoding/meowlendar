@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { dispatchNotification } from '@/lib/notifications/dispatcher'
 import { verifyCronSecret } from '@/lib/auth/cron'
+import { eventsInWindowFilter, expandOccurrences } from '@/lib/recurrence'
 
 function getServiceClient() {
   return createServerClient(
@@ -84,27 +85,29 @@ export async function GET(request: NextRequest) {
     // --- Events ---
     const { data: events } = await supabase
       .from('events')
-      .select('id, user_id, title, start_time, reminders, location, conferencing_url')
+      .select('id, user_id, title, start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions, reminders, location, conferencing_url')
       .not('reminders', 'eq', '[]')
-      .gte('start_time', now.toISOString())
-      .lte('start_time', windowEnd.toISOString())
+      .or(eventsInWindowFilter(now.toISOString(), windowEnd.toISOString()))
       .neq('status', 'cancelled')
 
     for (const ev of events ?? []) {
-      for (const r of (ev.reminders as { minutes_before: number }[]) ?? []) {
-        if (!isReminderDue(ev.start_time, r.minutes_before, now)) continue
-        const key = dedupKey('event', ev.id, r.minutes_before, ev.start_time)
-        if (await alreadySent(supabase, key)) continue
-        await dispatchNotification(supabase, ev.user_id, {
-          title: `Event ${minutesLabel(r.minutes_before)}`,
-          body: ev.title,
-          event: 'event_reminder',
-          url: '/',
-          data: { event_id: ev.id, minutes_before: r.minutes_before,
-            location: ev.location, conferencing_url: ev.conferencing_url },
-        })
-        await markSent(supabase, key)
-        processed++
+      for (const occurrence of expandOccurrences(ev, now, windowEnd)) {
+        const startIso = occurrence.start.toISOString()
+        for (const r of (ev.reminders as { minutes_before: number }[]) ?? []) {
+          if (!isReminderDue(startIso, r.minutes_before, now)) continue
+          const key = dedupKey('event', ev.id, r.minutes_before, startIso)
+          if (await alreadySent(supabase, key)) continue
+          await dispatchNotification(supabase, ev.user_id, {
+            title: `Event ${minutesLabel(r.minutes_before)}`,
+            body: ev.title,
+            event: 'event_reminder',
+            url: '/',
+            data: { event_id: ev.id, minutes_before: r.minutes_before,
+              location: ev.location, conferencing_url: ev.conferencing_url },
+          })
+          await markSent(supabase, key)
+          processed++
+        }
       }
     }
 

@@ -38,14 +38,14 @@ describe('MCP Tool Definitions', () => {
 
   // ---- Count ----
 
-  it('registers exactly 59 tools', () => {
-    expect(tools).toHaveLength(59)
+  it('registers exactly 60 tools', () => {
+    expect(tools).toHaveLength(60)
   })
 
   // ---- Per-domain counts ----
 
-  it('registers 1 calendar tool', () => {
-    expect(getCalendarToolDefinitions()).toHaveLength(1)
+  it('registers 2 calendar tools', () => {
+    expect(getCalendarToolDefinitions()).toHaveLength(2)
   })
 
   it('registers 6 event tools', () => {
@@ -333,6 +333,7 @@ describe('MCP Tool Definitions', () => {
   const EXPECTED_TOOL_NAMES = [
     // Calendars (1)
     'list_calendars',
+  'create_calendar',
     // Events (6)
     'list_events', 'create_event', 'get_event', 'update_event', 'delete_event', 'rsvp_event',
     // Tasks (11)
@@ -371,7 +372,7 @@ describe('MCP Tool Definitions', () => {
     }
   })
 
-  it('expected tool list is exactly 59', () => {
-    expect(EXPECTED_TOOL_NAMES).toHaveLength(59)
+  it('expected tool list is exactly 60', () => {
+    expect(EXPECTED_TOOL_NAMES).toHaveLength(60)
   })
 })

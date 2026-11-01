@@ -36,6 +36,8 @@ interface UIState {
   // Edit form
   editFormOpen: boolean
   editFormItemId: string | null
+  /** Which occurrences an edit of a recurring event applies to. */
+  editFormScope: 'single' | 'future' | 'all' | 'custom' | null
   editFormItemType: 'event' | 'task' | 'routine' | null
   editFormTab: 'event' | 'task' | 'routine'
   /** Seed data for create-mode (e.g. the clicked time slot). */
@@ -85,7 +87,8 @@ interface UIState {
     itemId: string | null,
     itemType: 'event' | 'task' | 'routine',
     tab?: 'event' | 'task' | 'routine',
-    initialData?: Record<string, unknown> | null
+    initialData?: Record<string, unknown> | null,
+    scope?: 'single' | 'future' | 'all' | 'custom' | null
   ) => void
   closeEditForm: () => void
   setEditFormTab: (tab: 'event' | 'task' | 'routine') => void
@@ -140,6 +143,7 @@ export const useUIStore = create<UIState>()((set) => ({
   // Edit form
   editFormOpen: false,
   editFormItemId: null,
+  editFormScope: null,
   editFormItemType: null,
   editFormTab: 'event',
   editFormInitialData: null,
@@ -196,10 +200,11 @@ export const useUIStore = create<UIState>()((set) => ({
   closePreviewPopover: () =>
     set({ previewPopover: { ...initialPreviewPopover } }),
 
-  openEditForm: (itemId, itemType, tab, initialData) =>
+  openEditForm: (itemId, itemType, tab, initialData, scope) =>
     set({
       editFormOpen: true,
       editFormItemId: itemId,
+      editFormScope: scope ?? null,
       editFormItemType: itemType,
       editFormTab: tab ?? itemType,
       editFormInitialData: initialData ?? null,
@@ -210,6 +215,7 @@ export const useUIStore = create<UIState>()((set) => ({
     set({
       editFormOpen: false,
       editFormItemId: null,
+      editFormScope: null,
       editFormItemType: null,
       editFormInitialData: null,
     }),

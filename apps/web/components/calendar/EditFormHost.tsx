@@ -15,6 +15,9 @@ import { useUndoable } from '@/lib/hooks/use-undoable'
 import { ItemEditForm, type ItemEditFormInitialData } from './ItemEditForm'
 import { parseRoutineItemId } from './grid-helpers'
 import { buildConvertBody, convertRequirements, type ItemType } from '@/lib/convert'
+import { parseEventItemId } from '@/lib/recurrence'
+import { useRecurringEventChange } from '@/lib/hooks/use-events'
+import type { RecurrenceEditScope } from './RecurrenceEditDialog'
 
 interface EditFormHostProps {
   events: CalendarEvent[]
@@ -110,6 +113,7 @@ export function EditFormHost({
   const {
     editFormOpen,
     editFormItemId,
+    editFormScope,
     editFormItemType,
     editFormTab,
     editFormInitialData,
@@ -117,11 +121,17 @@ export function EditFormHost({
   } = useUIStore()
 
   const undoable = useUndoable()
+  const recurringChange = useRecurringEventChange()
 
   const isEdit = Boolean(editFormItemId)
   const isTaskEdit = isEdit && editFormItemType === 'task'
   // Fetch the full task (with subtasks + tags) for edit mode.
   const taskDetail = useTask(isTaskEdit && editFormItemId ? editFormItemId : '')
+
+  const eventItem =
+    editFormItemType === 'event' && editFormItemId
+      ? parseEventItemId(editFormItemId)
+      : { eventId: null, occurrenceStart: null }
 
   const routineBaseId =
     editFormItemType === 'routine' && editFormItemId
@@ -141,9 +151,19 @@ export function EditFormHost({
       | ItemEditFormInitialData
       | undefined
   } else if (editFormItemType === 'event') {
-    sourceEvent = events.find((e) => e.id === editFormItemId)
+    sourceEvent = events.find((e) => e.id === eventItem.eventId)
     if (!sourceEvent) return null
     initialData = eventInitialData(sourceEvent)
+    // Open on the occurrence that was clicked, not the first one in the series.
+    if (eventItem.occurrenceStart) {
+      const length =
+        new Date(sourceEvent.end_time).getTime() - new Date(sourceEvent.start_time).getTime()
+      initialData = {
+        ...initialData,
+        start_time: eventItem.occurrenceStart,
+        end_time: new Date(new Date(eventItem.occurrenceStart).getTime() + length).toISOString(),
+      }
+    }
   } else if (editFormItemType === 'task') {
     sourceTask = taskDetail.data ?? tasks.find((t) => t.id === editFormItemId)
     // Wait for the detail fetch so subtasks/tags are populated.
@@ -160,12 +180,11 @@ export function EditFormHost({
 
   // ------ Save routing ------
   function createItem(type: ItemType, data: Record<string, unknown>) {
-    if (!userId) return
     if (type === 'event') {
       const calendarId =
         (data.calendar_id as string | null) ?? calendars[0]?.id ?? null
       if (!calendarId) {
-        window.alert('Connect a calendar before creating an event.')
+        window.alert('Create a calendar before creating an event.')
         return
       }
       undoable.createEvent({
@@ -238,6 +257,33 @@ export function EditFormHost({
   function updateItem(type: ItemType, id: string, data: Record<string, unknown>) {
     if (type === 'event') {
       if (!sourceEvent) return
+      // An edit of a recurring event says which occurrences it means.
+      if (sourceEvent.recurrence_rule) {
+        const patch: Record<string, unknown> = {
+          title: data.title as string,
+          notes: (data.notes as string | null) ?? null,
+          location: (data.location as string | null) ?? null,
+          calendar_id: (data.calendar_id as string) ?? undefined,
+          start_time: data.start_time as string,
+          end_time: data.end_time as string,
+          is_all_day: Boolean(data.is_all_day),
+          visibility: (data.visibility as 'busy' | 'free') ?? 'busy',
+          privacy: (data.privacy as 'public' | 'private') ?? 'public',
+          attendees: (data.attendees as CalendarEvent['attendees']) ?? [],
+          reminders: (data.reminders as CalendarEvent['reminders']) ?? [],
+        }
+        const scope = editFormScope ?? 'all'
+        if (scope === 'all') {
+          patch.recurrence_rule = (data.recurrence_rule as string | null) ?? null
+        }
+        recurringChange.mutate({
+          id: sourceEvent.id,
+          scope: scope === 'custom' ? 'all' : scope,
+          occurrenceStart: eventItem.occurrenceStart,
+          patch,
+        })
+        return
+      }
       undoable.updateEvent(
         id,
         {
@@ -357,7 +403,11 @@ export function EditFormHost({
 
     if (type === editFormItemType) {
       const id =
-        editFormItemType === 'routine' ? routineBaseId! : editFormItemId!
+        editFormItemType === 'routine'
+          ? routineBaseId!
+          : editFormItemType === 'event'
+            ? eventItem.eventId!
+            : editFormItemId!
       updateItem(type, id, data)
       closeEditForm()
       return
@@ -365,17 +415,31 @@ export function EditFormHost({
 
     // Type conversion (#13)
     const sourceId =
-      editFormItemType === 'routine' ? routineBaseId! : editFormItemId!
+      editFormItemType === 'routine'
+        ? routineBaseId!
+        : editFormItemType === 'event'
+          ? eventItem.eventId!
+          : editFormItemId!
     const ok = await convertItem(editFormItemType as ItemType, sourceId, type, data)
     if (ok) closeEditForm()
   }
 
-  function handleDelete() {
+  function handleDelete(scope?: RecurrenceEditScope) {
     if (!isEdit) {
       closeEditForm()
       return
     }
     if (editFormItemType === 'event' && sourceEvent) {
+      if (scope && sourceEvent.recurrence_rule) {
+        recurringChange.mutate({
+          id: sourceEvent.id,
+          scope: scope.type,
+          occurrenceStart: eventItem.occurrenceStart,
+          dates: scope.type === 'custom' ? scope.dates : undefined,
+        })
+        closeEditForm()
+        return
+      }
       undoable.deleteEvent(sourceEvent)
     } else if (editFormItemType === 'task' && sourceTask) {
       undoable.deleteTask(sourceTask)
