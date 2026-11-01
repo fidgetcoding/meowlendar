@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { authenticate, isAuthError } from '@/lib/auth/helpers'
 import { verifyOAuthState } from '@/lib/google/state'
 import { exchangeCodeForTokens, saveGoogleAccount } from '@/lib/google/oauth'
-import { initialSyncPrimaryCalendar } from '@/lib/google/sync'
+import { pullChanges } from '@/lib/google/sync'
 import { registerAccountWebhook } from '@/lib/google/webhooks'
+
+const INLINE_SYNC_MS = 6000
 
 function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
@@ -66,10 +68,16 @@ export async function GET(request: NextRequest) {
     return fail('account_save_failed')
   }
 
-  // 6. Initial event sync — primary calendar inline (fast first paint); the
-  //    sync-poll cron does the authoritative full-account sync afterwards.
+  // 6. First sync, of every calendar on the account. It gets a few seconds inline so
+  //    the user lands on a filled calendar; whatever is left finishes after the
+  //    redirect, and the scheduled job picks up anything after that.
   try {
-    await initialSyncPrimaryCalendar(accountId)
+    const first = await pullChanges(accountId, { deadlineMs: Date.now() + INLINE_SYNC_MS })
+    if (!first.complete) {
+      after(() => pullChanges(accountId).catch((err) => {
+        console.error('[google/callback] background sync failed (poll will retry):', err)
+      }))
+    }
   } catch (err) {
     console.error('[google/callback] initial sync failed (poll will retry):', err)
   }

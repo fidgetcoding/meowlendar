@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
+import { pullChanges } from '@/lib/google/sync'
 import { z } from 'zod'
 import { authenticate, isAuthError, validationError } from '@/lib/auth/helpers'
 import { disconnectGoogleAccount } from '@/lib/google/oauth'
@@ -94,6 +95,14 @@ export async function PATCH(
       { error: 'Failed to update calendar' },
       { status: 500 }
     )
+  }
+
+  // Turned back on: bring it up to date now rather than at the next scheduled sync.
+  if (parsed.data.is_active === true && calendar.google_account_id) {
+    const accountId = calendar.google_account_id
+    after(() => pullChanges(accountId).catch((err) => {
+      console.error('[calendars/PATCH] sync after enabling failed:', err)
+    }))
   }
 
   return NextResponse.json(updated)

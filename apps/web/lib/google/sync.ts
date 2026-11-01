@@ -10,6 +10,7 @@ import {
 } from './calendar'
 import { requireEnv } from '../env'
 import { googleApiBase } from '../external-urls'
+import { syncCalendarList } from './oauth'
 import type {
   GoogleEvent,
   GoogleEventAttendee,
@@ -211,80 +212,17 @@ export function mapLocalEventToGoogle(event: CalendarEvent): GoogleEventInsert {
 // ─── Sync Engine ─────────────────────────────────────────────────────────────
 
 /**
- * Pull changes from Google Calendar using incremental sync.
- * If no syncToken exists or Google returns 410 (expired token),
- * falls back to a full sync window (30 days past + 365 days future).
+ * Pull changes for every active calendar on an account, after refreshing the list
+ * of calendars. Each calendar keeps its own sync token; with none, or when Google
+ * expires one (410), it does a full window (30 days past + 365 days future).
+ *
+ * With a `deadlineMs`, it stops starting new calendars after that time and reports
+ * `complete: false`. Finished calendars keep their tokens, so a later call resumes.
  */
 export async function pullChanges(
-  accountId: string
-): Promise<{ created: number; updated: number; deleted: number }> {
-  const supabase = getServiceClient()
-
-  // Fetch the account's sync_token and user_id
-  const { data: account, error: accountError } = await supabase
-    .from('google_accounts')
-    .select('sync_token, user_id')
-    .eq('id', accountId)
-    .single()
-
-  if (accountError || !account) {
-    throw new Error('Google account not found')
-  }
-
-  // Fetch all active calendars for this account
-  const { data: calendars, error: calError } = await supabase
-    .from('calendars')
-    .select('id, google_calendar_id')
-    .eq('google_account_id', accountId)
-    .eq('is_active', true)
-
-  if (calError || !calendars) {
-    throw new Error('Failed to fetch calendars')
-  }
-
-  let totalCreated = 0
-  let totalUpdated = 0
-  let totalDeleted = 0
-
-  for (const cal of calendars) {
-    const result = await syncCalendar(
-      accountId,
-      cal.id,
-      cal.google_calendar_id,
-      account.user_id,
-      account.sync_token
-    )
-    totalCreated += result.created
-    totalUpdated += result.updated
-    totalDeleted += result.deleted
-
-    // Store the latest sync token (from the last page of the last calendar)
-    if (result.newSyncToken) {
-      await supabase
-        .from('google_accounts')
-        .update({
-          sync_token: result.newSyncToken,
-          last_synced_at: new Date().toISOString(),
-        })
-        .eq('id', accountId)
-    }
-  }
-
-  return { created: totalCreated, updated: totalUpdated, deleted: totalDeleted }
-}
-
-/**
- * Initial-connect sync of just the primary calendar (past 30 days → next 365).
- *
- * Deliberately bounded to one calendar so it can run inline in the OAuth
- * callback without risking a function timeout. It does NOT persist a sync_token
- * or last_synced_at, so the account still reads as "never synced" — the
- * sync-poll cron then does the authoritative full-account sync (all calendars)
- * and establishes the incremental token. The re-sync is idempotent (etag skip).
- */
-export async function initialSyncPrimaryCalendar(
-  accountId: string
-): Promise<{ created: number; updated: number; deleted: number }> {
+  accountId: string,
+  options: { deadlineMs?: number } = {}
+): Promise<{ created: number; updated: number; deleted: number; complete: boolean }> {
   const supabase = getServiceClient()
 
   const { data: account, error: accountError } = await supabase
@@ -297,31 +235,56 @@ export async function initialSyncPrimaryCalendar(
     throw new Error('Google account not found')
   }
 
-  const { data: calendars } = await supabase
+  await syncCalendarList(accountId, account.user_id)
+
+  const { data: calendars, error: calError } = await supabase
     .from('calendars')
-    .select('id, google_calendar_id, is_primary')
+    .select('id, google_calendar_id, sync_token, is_primary')
     .eq('google_account_id', accountId)
     .eq('is_active', true)
+    .order('is_primary', { ascending: false })
 
-  if (!calendars || calendars.length === 0) {
-    return { created: 0, updated: 0, deleted: 0 }
+  if (calError || !calendars) {
+    throw new Error('Failed to fetch calendars')
   }
 
-  const primary = calendars.find((c) => c.is_primary) ?? calendars[0]!
+  let totalCreated = 0
+  let totalUpdated = 0
+  let totalDeleted = 0
+  let complete = true
 
-  const result = await syncCalendar(
-    accountId,
-    primary.id,
-    primary.google_calendar_id,
-    account.user_id,
-    null // force the full-window path; discard the returned syncToken
-  )
+  for (const cal of calendars) {
+    if (options.deadlineMs && Date.now() > options.deadlineMs) {
+      complete = false
+      break
+    }
+    const result = await syncCalendar(
+      accountId,
+      cal.id,
+      cal.google_calendar_id,
+      account.user_id,
+      cal.sync_token
+    )
+    totalCreated += result.created
+    totalUpdated += result.updated
+    totalDeleted += result.deleted
 
-  return {
-    created: result.created,
-    updated: result.updated,
-    deleted: result.deleted,
+    if (result.newSyncToken) {
+      await supabase
+        .from('calendars')
+        .update({ sync_token: result.newSyncToken, last_synced_at: new Date().toISOString() })
+        .eq('id', cal.id)
+    }
   }
+
+  if (complete) {
+    await supabase
+      .from('google_accounts')
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq('id', accountId)
+  }
+
+  return { created: totalCreated, updated: totalUpdated, deleted: totalDeleted, complete }
 }
 
 /**
@@ -428,6 +391,35 @@ async function syncCalendar(
   return { created, updated, deleted, newSyncToken }
 }
 
+/** Records one occurrence of a series as removed from its master row. */
+async function addMasterException(
+  supabase: ReturnType<typeof getServiceClient>,
+  calendarId: string,
+  masterGoogleId: string,
+  original: { dateTime?: string; date?: string },
+): Promise<void> {
+  const when = original.dateTime ?? (original.date ? `${original.date}T00:00:00Z` : null)
+  if (!when) return
+
+  const { data: master } = await supabase
+    .from('events')
+    .select('id, recurrence_exceptions')
+    .eq('calendar_id', calendarId)
+    .eq('google_event_id', masterGoogleId)
+    .maybeSingle()
+  if (!master) return
+
+  const iso = new Date(when).toISOString()
+  const current: string[] = (master.recurrence_exceptions ?? []).map((value: string) =>
+    new Date(value).toISOString()
+  )
+  if (current.includes(iso)) return
+  await supabase
+    .from('events')
+    .update({ recurrence_exceptions: [...current, iso] })
+    .eq('id', master.id)
+}
+
 /**
  * Upsert a single Google event into the local database.
  * Returns 'created', 'updated', or 'deleted'.
@@ -441,10 +433,15 @@ async function upsertEvent(
   // Check if this event already exists locally
   const { data: existing } = await supabase
     .from('events')
-    .select('id, etag')
+    .select('id, etag, sync_status')
     .eq('calendar_id', calendarId)
     .eq('google_event_id', googleEvent.id)
-    .single()
+    .maybeSingle()
+
+  // A changed or cancelled occurrence of a series: the master stops showing it.
+  if (googleEvent.recurringEventId && googleEvent.originalStartTime) {
+    await addMasterException(supabase, calendarId, googleEvent.recurringEventId, googleEvent.originalStartTime)
+  }
 
   // Cancelled event = delete locally
   if (googleEvent.status === 'cancelled') {
@@ -457,6 +454,12 @@ async function upsertEvent(
   const mapped = mapGoogleEventToLocal(googleEvent, calendarId, userId)
 
   if (existing) {
+    // An edit made here is waiting to go out. Taking Google's copy now would lose
+    // it; the push resolves any conflict instead.
+    if (existing.sync_status === 'pending_push') {
+      return 'updated'
+    }
+
     // Skip update if etag hasn't changed
     if (existing.etag && existing.etag === googleEvent.etag) {
       return 'updated' // No actual change, but counted for reporting
@@ -683,7 +686,9 @@ export const MAX_PUSH_RETRIES = 5
  * (2^n minutes, capped at 60). pushEvent flips the row back to 'synced' on
  * success.
  */
-export async function retryPendingPushEvents(): Promise<{
+export async function retryPendingPushEvents(
+  options: { userId?: string } = {}
+): Promise<{
   retried: number
   succeeded: number
   failed: number
@@ -692,13 +697,16 @@ export async function retryPendingPushEvents(): Promise<{
   const supabase = getServiceClient()
   const nowIso = new Date().toISOString()
 
-  const { data: events } = await supabase
+  let eventQuery = supabase
     .from('events')
     .select('*')
     .eq('sync_status', 'pending_push')
     .lt('retry_count', MAX_PUSH_RETRIES)
     .or(`next_retry_at.is.null,next_retry_at.lte.${nowIso}`)
     .limit(100)
+  if (options.userId) eventQuery = eventQuery.eq('user_id', options.userId)
+
+  const { data: events } = await eventQuery
 
   let retried = 0
   let succeeded = 0
@@ -745,4 +753,36 @@ export async function retryPendingPushEvents(): Promise<{
   }
 
   return { retried, succeeded, failed, gaveUp }
+}
+
+// ─── Deletes made outside the API ────────────────────────────────────────────
+
+/**
+ * Carries deletes made directly in the browser over to Google. Each one is removed
+ * once Google confirms, or already has no such event. A failure stays for next time.
+ */
+export async function flushEventTombstones(
+  options: { userId?: string } = {}
+): Promise<{ deleted: number; failed: number }> {
+  const supabase = getServiceClient()
+  let query = supabase
+    .from('google_event_tombstones')
+    .select('id, google_account_id, google_calendar_id, google_event_id')
+    .limit(100)
+  if (options.userId) query = query.eq('user_id', options.userId)
+
+  const { data: tombstones } = await query
+  let deleted = 0
+  let failed = 0
+  for (const t of tombstones ?? []) {
+    try {
+      await deleteGoogleEvent(t.google_account_id, t.google_calendar_id, t.google_event_id)
+      await supabase.from('google_event_tombstones').delete().eq('id', t.id)
+      deleted++
+    } catch (err) {
+      failed++
+      console.error('[google/sync] delete failed, will retry:', err)
+    }
+  }
+  return { deleted, failed }
 }

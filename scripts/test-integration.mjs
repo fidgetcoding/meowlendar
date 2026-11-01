@@ -10,6 +10,8 @@
 // real services.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -87,6 +89,10 @@ try {
   start('pnpm', ['--filter', '@poolendar/web', 'exec', 'next', 'start', '-p', PORT], { cwd: root, env: appEnv })
   await waitFor(`${APP_URL}/login`, 'the app')
 
+  // Lets a test start a second copy of the app with its own settings.
+  const envFile = join(mkdtempSync(join(tmpdir(), 'meow-integration-')), 'app-env.json')
+  writeFileSync(envFile, JSON.stringify(appEnv), { mode: 0o600 })
+
   exitCode = await new Promise((resolve) => {
     const args = ['--filter', '@poolendar/integration', 'exec', 'vitest', 'run', ...process.argv.slice(2)]
     const tests = spawn('pnpm', args, {
@@ -97,7 +103,7 @@ try {
         MEOW_APP_URL: APP_URL,
         MEOW_CRON_SECRET: CRON_SECRET,
         MEOW_MCP_ENTRY: join(root, 'packages/mcp/dist/index.js'),
-        MEOW_VAPID_PUBLIC: appEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
+        MEOW_APP_ENV_FILE: envFile,
       },
     })
     tests.on('exit', (code) => resolve(code ?? 1))

@@ -3,5 +3,15 @@
   "buildCommand": "pnpm turbo build --filter=@poolendar/web",
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/sync-poll",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/webhook-renewal",
+      "schedule": "0 7 * * *"
+    }
+  ]
 }

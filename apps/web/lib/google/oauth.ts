@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
+import { getGoogleAccessToken } from './calendar'
+import type { GoogleCalendarListEntry } from './types'
 import { googleApiBase, googleAuthUrl, googleRevokeUrl, googleTokenUrl } from '../external-urls'
 
 function getServiceClient() {
@@ -203,55 +205,68 @@ export async function saveGoogleAccount(
 
   const accountId = account.id
 
-  // Fetch the user's calendar list from Google
-  const calendarListResponse = await fetch(
-    `${googleApiBase()}/calendar/v3/users/me/calendarList`,
-    {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    }
-  )
-
-  if (!calendarListResponse.ok) {
-    // Account is saved even if calendar fetch fails — caller can retry sync
-    console.error(
-      'Failed to fetch Google calendar list:',
-      calendarListResponse.status
-    )
-    return accountId
-  }
-
-  const calendarListData = await calendarListResponse.json()
-  const calendars: Array<{
-    id: string
-    summary: string
-    backgroundColor: string
-    primary?: boolean
-    accessRole: string
-  }> = calendarListData.items ?? []
-
-  // Upsert each calendar
-  for (const cal of calendars) {
-    const color =
-      cal.backgroundColor ??
-      GOOGLE_CALENDAR_COLORS[cal.id] ??
-      '#4285F4'
-
-    await supabase.from('calendars').upsert(
-      {
-        user_id: userId,
-        google_account_id: accountId,
-        google_calendar_id: cal.id,
-        name: cal.summary ?? cal.id,
-        color,
-        is_primary: cal.primary === true,
-        is_active: true,
-        access_role: cal.accessRole ?? null,
-      },
-      { onConflict: 'google_account_id,google_calendar_id' }
-    )
+  // Account is saved even if this fails: the next sync retries it.
+  try {
+    await syncCalendarList(accountId, userId)
+  } catch (err) {
+    console.error('Failed to fetch Google calendar list:', err)
   }
 
   return accountId
+}
+
+/**
+ * Brings the calendars table in line with Google's calendar list. New calendars come
+ * in turned on. Existing ones keep the user's on/off choice and colour. Calendars
+ * gone from Google go here too, with their events.
+ */
+export async function syncCalendarList(accountId: string, userId: string): Promise<void> {
+  const supabase = getServiceClient()
+  const accessToken = await getGoogleAccessToken(accountId)
+
+  const response = await fetch(`${googleApiBase()}/calendar/v3/users/me/calendarList`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    throw new Error(`Google calendar list failed: ${response.status}`)
+  }
+
+  const { items } = (await response.json()) as { items?: GoogleCalendarListEntry[] }
+  const remote = items ?? []
+
+  const { data: existing } = await supabase
+    .from('calendars')
+    .select('id, google_calendar_id')
+    .eq('google_account_id', accountId)
+  const known = new Map((existing ?? []).map((c) => [c.google_calendar_id as string, c.id as string]))
+
+  for (const cal of remote) {
+    const shared = {
+      name: cal.summary ?? cal.id,
+      is_primary: cal.primary === true,
+      access_role: cal.accessRole ?? null,
+    }
+    const localId = known.get(cal.id)
+    if (localId) {
+      await supabase.from('calendars').update(shared).eq('id', localId)
+    } else {
+      await supabase.from('calendars').insert({
+        ...shared,
+        user_id: userId,
+        source: 'google',
+        google_account_id: accountId,
+        google_calendar_id: cal.id,
+        color: cal.backgroundColor ?? GOOGLE_CALENDAR_COLORS[cal.id] ?? '#4285F4',
+        is_active: true,
+      })
+    }
+  }
+
+  const remoteIds = new Set(remote.map((c) => c.id))
+  const gone = (existing ?? []).filter((c) => !remoteIds.has(c.google_calendar_id as string))
+  for (const cal of gone) {
+    await supabase.from('calendars').delete().eq('id', cal.id)
+  }
 }
 
 /**

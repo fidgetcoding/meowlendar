@@ -43,6 +43,8 @@ import { useOnline } from '@/lib/offline/use-online'
 import { cn } from '@/lib/utils'
 import type { Profile } from '@poolendar/types'
 
+const BACKGROUND_SYNC_MS = 2 * 60_000
+
 // ---------------------------------------------------------------------------
 // Offline banner
 // ---------------------------------------------------------------------------
@@ -222,10 +224,28 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   }, [setActiveSettingsPanel])
 
   const refreshCalendars = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: calendarKeys.all })
-    queryClient.invalidateQueries({ queryKey: eventKeys.all })
-    fetch('/api/google/sync', { method: 'POST' }).catch(() => {})
+    fetch('/api/google/sync', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: calendarKeys.all })
+        queryClient.invalidateQueries({ queryKey: eventKeys.all })
+      })
   }, [queryClient])
+
+  // While the app is open it keeps itself in sync. This is what covers a deployment
+  // whose scheduled job only runs daily, like Vercel's free plan.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') refreshCalendars()
+    }
+    tick()
+    const timer = setInterval(tick, BACKGROUND_SYNC_MS)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [refreshCalendars])
 
   const deleteSelected = useCallback(() => {
     const { selectedItemId: id, selectedItemType: type } = useCalendarStore.getState()

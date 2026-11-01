@@ -34,8 +34,9 @@ export function eventsToItems(
   calendars: Calendar[],
   window: { start: Date; end: Date },
 ): CalendarItemData[] {
+  const hidden = new Set(calendars.filter((c) => !c.is_active).map((c) => c.id))
   return events
-    .filter((e) => e.status !== 'cancelled')
+    .filter((e) => e.status !== 'cancelled' && !hidden.has(e.calendar_id))
     .flatMap((event) => {
       const common = {
         type: 'event' as const,

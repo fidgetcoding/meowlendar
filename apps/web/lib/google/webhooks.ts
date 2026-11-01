@@ -41,15 +41,16 @@ export async function registerAccountWebhook(accountId: string): Promise<boolean
   // webhook route's token check, so skip registration entirely without one.
   if (!optionalEnv('GOOGLE_WEBHOOK_SECRET')) return false
 
+  // Google only delivers to public HTTPS. The scheduled sync covers everything else.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl || !appUrl.trim()) return false
+  if (!appUrl || !appUrl.trim().startsWith('https://')) return false
   const webhookUrl = `${appUrl}/api/google/webhook`
 
   const supabase = getServiceClient()
 
   const { data: account } = await supabase
     .from('google_accounts')
-    .select('id, webhook_channel_id')
+    .select('id, webhook_channel_id, webhook_resource_id')
     .eq('id', accountId)
     .single()
 
@@ -77,7 +78,7 @@ export async function registerAccountWebhook(accountId: string): Promise<boolean
         },
         body: JSON.stringify({
           id: account.webhook_channel_id,
-          resourceId: account.webhook_channel_id,
+          resourceId: account.webhook_resource_id,
         }),
       })
     } catch {
@@ -99,6 +100,7 @@ export async function registerAccountWebhook(accountId: string): Promise<boolean
     .from('google_accounts')
     .update({
       webhook_channel_id: watchResult?.id ?? null,
+      webhook_resource_id: watchResult?.resourceId ?? null,
       webhook_channel_expiration: new Date(expirationMs).toISOString(),
     })
     .eq('id', accountId)

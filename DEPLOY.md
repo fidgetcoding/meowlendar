@@ -77,23 +77,23 @@ If you skip this, **Continue with Google** shows a raw `provider is not enabled`
 
 ### Connect calendars
 
-**Settings > Calendars > Connect Google Account.** Repeat for each account. The code has no limit on accounts, and Google shows an account picker each time. Connecting pulls the primary calendar. Press **Resync** on the account to pull its other calendars.
+**Settings > Calendars > Connect Google Account.** Repeat for each account. The code has no limit on accounts, and Google shows an account picker each time. Every calendar on the account comes in, and you can turn each one off in the same place.
 
-## 3. Keep sync running
+## 3. Automatic sync
 
-Three routes need a scheduler. Nothing in this repo schedules them, so without one Google changes only arrive when you press **Resync**, and reminders never fire. Each one is a GET with `Authorization: Bearer $CRON_SECRET`:
+Once an account is connected, sync runs by itself. Every calendar on the account comes in on first connect, and you can turn each one on or off under **Settings > Calendars**. **Resync** stays there as a manual button.
+
+- **On a plain server (`pnpm dev`, `next start`):** the app runs its own jobs. It syncs every 5 minutes and sends reminders every minute. Set `SCHEDULER_INTERVAL_SECONDS` to change the sync interval, or `0` to turn it off and use your own scheduler. If you run several instances, a lease in the database stops them doubling up.
+- **On Vercel:** there's no long-running process, so `vercel.json` schedules the sync routes with Vercel Cron, using your `CRON_SECRET`. Hobby plans only allow daily crons, so that's what it ships with. Google push webhooks and the open app fill the gaps: an open tab syncs every 2 minutes. **Reminders need a per-minute schedule**, so on Hobby use an outside scheduler for `/api/cron/reminders`. On Pro, you can tighten the schedules in `vercel.json`.
+- **Any other scheduler:** each route is a GET with `Authorization: Bearer $CRON_SECRET`:
 
 | Route | How often | What it does |
 |---|---|---|
-| `/api/cron/sync-poll` | every 5 to 10 minutes | Pulls Google changes, retries failed pushes |
+| `/api/cron/sync-poll` | every 5 minutes | Pulls Google changes, pushes changes made here |
 | `/api/cron/webhook-renewal` | daily | Renews Google push channels |
 | `/api/cron/reminders` | every minute | Sends due reminders |
 
-```bash
-curl -H "Authorization: Bearer $CRON_SECRET" https://<your-domain>/api/cron/sync-poll
-```
-
-Any scheduler works: crontab, GitHub Actions, n8n, or Vercel Cron if your plan allows these intervals. Google push webhooks need a public HTTPS URL with a valid certificate, so they do not work on localhost.
+Google push webhooks need a public HTTPS URL with a valid certificate, so they don't run on localhost. They watch each account's primary calendar and trigger a sync of the whole account; other calendars update on the next scheduled sync.
 
 ## 4. Hosted Supabase, no Docker
 
@@ -150,7 +150,8 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 | `GOOGLE_TOKEN_ENC_KEY` | yes | `openssl rand -base64 32`. Encrypts Google tokens and API key sessions. Changing it orphans stored tokens |
 | `GOOGLE_CLIENT_ID` | for Google | Section 2 |
 | `GOOGLE_CLIENT_SECRET` | for Google | Section 2 |
-| `CRON_SECRET` | for sync | `openssl rand -hex 32` |
+| `SCHEDULER_INTERVAL_SECONDS` | no | Built-in sync interval. `0` turns it off. Ignored on Vercel |
+| `CRON_SECRET` | for outside schedulers and Vercel Cron | `openssl rand -hex 32` |
 | `GOOGLE_WEBHOOK_SECRET` | for push sync | `openssl rand -hex 32` |
 | `RESEND_API_KEY` | for email | Resend. Without it, booking emails are only logged |
 | `RESEND_FROM_EMAIL` | for email | An address on a domain you verified with Resend. The default will fail for you |

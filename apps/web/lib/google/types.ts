@@ -63,6 +63,7 @@ export interface GoogleEvent extends GoogleEventWrite {
   status?: string
   hangoutLink?: string
   recurringEventId?: string
+  originalStartTime?: GoogleEventDateTime
   kind?: string
   htmlLink?: string
   created?: string
@@ -77,4 +78,13 @@ export interface GoogleEventsPage {
   items?: GoogleEvent[]
   nextPageToken?: string
   nextSyncToken?: string
+}
+
+/** An entry from calendarList.list. */
+export interface GoogleCalendarListEntry {
+  id: string
+  summary?: string
+  backgroundColor?: string
+  primary?: boolean
+  accessRole?: 'owner' | 'writer' | 'reader' | 'freeBusyReader'
 }

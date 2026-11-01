@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
+vi.mock('@/lib/google/webhooks', () => ({ registerAccountWebhook: vi.fn() }))
+vi.mock('@/lib/rate-limit', () => ({ pruneRateLimitEntries: vi.fn() }))
 vi.mock('@/lib/google/sync', () => ({
+  flushEventTombstones: vi.fn().mockResolvedValue({ deleted: 0, failed: 0 }),
   pullChanges: vi.fn().mockResolvedValue({ created: 0, updated: 0, deleted: 0 }),
   retryPendingPushEvents: vi
     .fn()

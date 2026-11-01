@@ -71,7 +71,19 @@ export async function GET(request: NextRequest) {
       .or(eventsInWindowFilter(start, end))
       .order('start_time', { ascending: true })
 
-    if (calendarId) query = query.eq('calendar_id', calendarId)
+    if (calendarId) {
+      query = query.eq('calendar_id', calendarId)
+    } else {
+      // A calendar turned off in settings stays out of the default view.
+      const { data: hidden } = await supabase
+        .from('calendars')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('is_active', false)
+      if (hidden?.length) {
+        query = query.not('calendar_id', 'in', `(${hidden.map((c) => c.id).join(',')})`)
+      }
+    }
 
     const { data, error } = await query
     if (error) {
