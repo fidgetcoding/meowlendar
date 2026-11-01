@@ -38,6 +38,8 @@ export interface UserSettings {
   background_density: 'compact' | 'comfortable' | 'spacious'
   notifications: NotificationSettings
   telegram_chat_id: string | null
+  /** Google calendar that scheduled tasks are sent to. Null means off. */
+  task_sync_calendar_id?: string | null
   booking_page_title: string | null
   booking_page_welcome: string | null
   booking_page_brand_color: string | null

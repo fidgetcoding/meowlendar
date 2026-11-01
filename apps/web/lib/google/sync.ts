@@ -11,6 +11,7 @@ import {
 import { requireEnv } from '../env'
 import { googleApiBase } from '../external-urls'
 import { syncCalendarList } from './oauth'
+import { applyIncomingTaskEvent } from './task-sync'
 import type {
   GoogleEvent,
   GoogleEventAttendee,
@@ -430,6 +431,10 @@ async function upsertEvent(
   calendarId: string,
   userId: string
 ): Promise<'created' | 'updated' | 'deleted'> {
+  // A task we mirrored to this calendar. It stays a task and never becomes an event.
+  const taskResult = await applyIncomingTaskEvent(supabase, googleEvent, userId)
+  if (taskResult) return taskResult
+
   // Check if this event already exists locally
   const { data: existing } = await supabase
     .from('events')

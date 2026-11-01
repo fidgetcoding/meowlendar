@@ -35,6 +35,7 @@ export interface GoogleConferenceData {
 
 /** Fields this app sends in a PATCH. Null clears a text field on Google's side. */
 export interface GoogleEventWrite {
+  extendedProperties?: { private?: Record<string, string> }
   summary?: string
   description?: string | null
   location?: string | null

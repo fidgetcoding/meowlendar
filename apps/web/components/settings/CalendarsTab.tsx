@@ -16,6 +16,8 @@ interface CalendarsTabProps {
   onCreateLocal: (name: string) => void
   onRenameLocal: (id: string, name: string) => void
   onDeleteLocal: (id: string) => void
+  taskSyncCalendarId: string | null
+  onTaskSyncChange: (calendarId: string | null) => void
 }
 
 export function CalendarsTab({
@@ -28,10 +30,15 @@ export function CalendarsTab({
   onCreateLocal,
   onRenameLocal,
   onDeleteLocal,
+  taskSyncCalendarId,
+  onTaskSyncChange,
 }: CalendarsTabProps) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
   const [newLocalName, setNewLocalName] = useState('')
   const localCalendars = calendars.filter((c) => c.source === 'local')
+  const writableGoogleCalendars = calendars.filter(
+    (c) => c.source === 'google' && (c.access_role === 'owner' || c.access_role === 'writer'),
+  )
 
   return (
     <>
@@ -218,6 +225,30 @@ export function CalendarsTab({
           Connect Google Account
         </Button>
       </SettingsSection>
+
+      {writableGoogleCalendars.length > 0 && (
+        <SettingsSection
+          title="Tasks on Google"
+          description="Scheduled tasks can appear on a Google calendar and stay updated. Changes made on Google come back to the task."
+        >
+          <label className="flex flex-col gap-1 text-sm text-[var(--fg)]">
+            Send scheduled tasks to
+            <select
+              aria-label="Send scheduled tasks to"
+              value={taskSyncCalendarId ?? ''}
+              onChange={(e) => onTaskSyncChange(e.target.value || null)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--fg)]"
+            >
+              <option value="">Off</option>
+              {writableGoogleCalendars.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </SettingsSection>
+      )}
     </>
   )
 }

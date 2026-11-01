@@ -2,6 +2,7 @@
 // stale accounts and to push waiting changes for every user.
 import { createServerClient } from '@supabase/ssr'
 import { flushEventTombstones, pullChanges, retryPendingPushEvents } from '@/lib/google/sync'
+import { flushTaskSync } from '@/lib/google/task-sync'
 import { registerAccountWebhook } from '@/lib/google/webhooks'
 import { pruneRateLimitEntries } from '@/lib/rate-limit'
 import { requireEnv } from '@/lib/env'
@@ -54,6 +55,7 @@ export async function runSyncPoll() {
 
   // Changes made here that still have to reach Google.
   const retry = await retryPendingPushEvents()
+  const tasks = await flushTaskSync()
   const deletes = await flushEventTombstones()
 
   await pruneRateLimitEntries()
@@ -62,6 +64,7 @@ export async function runSyncPoll() {
     success: true,
     processed,
     retry,
+    tasks,
     deletes,
     ...(errors.length > 0 ? { errors } : {}),
   }

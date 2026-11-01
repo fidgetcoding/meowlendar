@@ -521,6 +521,16 @@ export function SettingsModal({
                   onRenameLocal={(id, name) =>
                     changeLocalCalendar(`/api/calendars/${id}`, 'PATCH', { name })
                   }
+                  taskSyncCalendarId={settings.task_sync_calendar_id ?? null}
+                  onTaskSyncChange={async (calendarId) => {
+                    updateSettings({ task_sync_calendar_id: calendarId })
+                    const res = await fetch('/api/tasks/google-sync', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ calendar_id: calendarId }),
+                    })
+                    if (!res.ok) toast.error('Failed to change where tasks go')
+                  }}
                   onDeleteLocal={(id) =>
                     changeLocalCalendar(`/api/calendars/${id}`, 'DELETE', undefined, 'Failed to delete calendar')
                   }

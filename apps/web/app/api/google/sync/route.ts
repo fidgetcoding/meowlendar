@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { authenticate, isAuthError, validationError } from '@/lib/auth/helpers'
 import { flushEventTombstones, pullChanges, retryPendingPushEvents } from '@/lib/google/sync'
+import { flushTaskSync } from '@/lib/google/task-sync'
 
 const syncSchema = z.object({
   google_account_id: z.string().uuid().optional(),
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await retryPendingPushEvents({ userId })
+    await flushTaskSync({ userId })
     await flushEventTombstones({ userId })
 
     const totals = { created: 0, updated: 0, deleted: 0 }

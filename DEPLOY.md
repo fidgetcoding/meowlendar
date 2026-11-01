@@ -95,6 +95,12 @@ Once an account is connected, sync runs by itself. Every calendar on the account
 
 Google push webhooks need a public HTTPS URL with a valid certificate, so they don't run on localhost. They watch each account's primary calendar and trigger a sync of the whole account; other calendars update on the next scheduled sync.
 
+### Tasks on Google
+
+Scheduled tasks can appear on a Google calendar you choose, under **Settings > Calendars > Tasks on Google**. It's off until you pick one, and choosing **Off** takes the mirrored events back down. Tasks reach Google on the next sync: within 2 minutes while the app is open, otherwise on the scheduled job.
+
+If both sides change a task between syncs, the change in Meowlendar wins. Moving or renaming the event on Google updates the task. Deleting it on Google unschedules the task and keeps it.
+
 ## 4. Hosted Supabase, no Docker
 
 1. Create a project at [supabase.com](https://supabase.com).

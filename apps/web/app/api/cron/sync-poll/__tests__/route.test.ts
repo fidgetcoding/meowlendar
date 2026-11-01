@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
+vi.mock('@/lib/google/task-sync', () => ({
+  flushTaskSync: vi.fn().mockResolvedValue({ pushed: 0, removed: 0, failed: 0 }),
+}))
 vi.mock('@/lib/google/webhooks', () => ({ registerAccountWebhook: vi.fn() }))
 vi.mock('@/lib/rate-limit', () => ({ pruneRateLimitEntries: vi.fn() }))
 vi.mock('@/lib/google/sync', () => ({
