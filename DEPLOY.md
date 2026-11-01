@@ -2,7 +2,7 @@
 
 You run your own copy with your own Supabase and your own Google client. There is no shared hosted database.
 
-Meowlendar was renamed from Poolendar. Package names (`@poolendar/*`), the `poolendar-mcp` binary, and the `POOLENDAR_*` variables keep the old name on purpose.
+Meowlendar was renamed from Poolendar. Internal package names (`@poolendar/*`) keep the old name on purpose.
 
 ## 1. Run it locally
 
@@ -151,18 +151,18 @@ The app reads `apps/web/.env.local`. A `.env` at the repo root is not read.
 
 ## 7. Connect the MCP
 
-The server is not on npm. Build it from your clone:
+Build it from your clone:
 
 ```bash
-pnpm --filter poolendar-mcp build
+pnpm --filter meowlendar-mcp build
 ```
 
 Create a key in the app under **Settings > API Keys**. It is shown once. Then register it, using the absolute path to your clone:
 
 ```bash
 claude mcp add meowlendar -s user \
-  --env POOLENDAR_API_KEY=pk_your_key \
-  --env POOLENDAR_API_URL=http://localhost:3000 \
+  --env MEOWLENDAR_API_KEY=pk_your_key \
+  --env MEOWLENDAR_API_URL=http://localhost:3000 \
   -- node /absolute/path/to/meowlendar/packages/mcp/dist/index.js
 ```
 

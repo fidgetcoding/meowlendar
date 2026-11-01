@@ -36,17 +36,20 @@ import {
 
 // --- Configuration ---
 
-// Base URL of the Poolendar app the MCP wraps. POOLENDAR_API_URL is the
-// documented name; POOLENDAR_URL is kept as a fallback for older configs.
-const POOLENDAR_URL =
-  process.env.POOLENDAR_API_URL ?? process.env.POOLENDAR_URL ?? 'http://localhost:3000'
-const POOLENDAR_API_KEY = process.env.POOLENDAR_API_KEY
+// Base URL of the app the MCP wraps. MEOWLENDAR_* are the documented names; the
+// POOLENDAR_* names still work for configs written before the rename.
+const API_URL =
+  process.env.MEOWLENDAR_API_URL ??
+  process.env.POOLENDAR_API_URL ??
+  process.env.POOLENDAR_URL ??
+  'http://localhost:3000'
+const API_KEY = process.env.MEOWLENDAR_API_KEY ?? process.env.POOLENDAR_API_KEY
 
-if (!POOLENDAR_API_KEY) {
+if (!API_KEY) {
   console.error(
-    'poolendar-mcp: POOLENDAR_API_KEY environment variable is required.\n' +
+    'meowlendar-mcp: MEOWLENDAR_API_KEY environment variable is required.\n' +
       'Generate an API key in the app under Settings > API Keys, then set it:\n' +
-      '  export POOLENDAR_API_KEY=pk_...'
+      '  export MEOWLENDAR_API_KEY=pk_...'
   )
   process.exit(1)
 }
@@ -54,13 +57,13 @@ if (!POOLENDAR_API_KEY) {
 // --- Server + Client ---
 
 const server = new Server(
-  { name: 'poolendar-mcp', version: '0.1.0' },
+  { name: 'meowlendar-mcp', version: '0.1.0' },
   { capabilities: { tools: {} } }
 )
 
 const client = new PoolendarClient({
-  baseUrl: POOLENDAR_URL,
-  apiKey: POOLENDAR_API_KEY,
+  baseUrl: API_URL,
+  apiKey: API_KEY,
 })
 
 // --- Aggregate Tool Definitions ---
@@ -193,7 +196,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('poolendar-mcp: Fatal error:', err)
+  console.error('meowlendar-mcp: Fatal error:', err)
   process.exit(1)
 })
 

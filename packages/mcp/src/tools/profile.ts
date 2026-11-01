@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getProfileToolDefinitions(): ToolDefinition[] {
@@ -22,7 +22,7 @@ export function getProfileToolDefinitions(): ToolDefinition[] {
           username: {
             type: 'string',
             description:
-              'Updated username. Also changes the booking page subdomain ({username}.poolendar.com).',
+              'Updated username. Also changes the booking page subdomain ({username}.example.com).',
           },
           display_name: {
             type: 'string',
@@ -124,7 +124,7 @@ export function getProfileToolDefinitions(): ToolDefinition[] {
               booking_page_brand_color: { type: 'string', description: 'Booking page accent color hex.' },
               booking_page_show_poolendar_branding: {
                 type: 'boolean',
-                description: 'Show Poolendar branding on booking pages.',
+                description: 'Show Meowlendar branding on booking pages.',
               },
             },
           },
@@ -174,7 +174,7 @@ export function getProfileToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getProfileToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
+export function getProfileToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
   return {
     get_profile: async () => {
       const profile = await client.getProfile()

@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+// Proves what `npx meowlendar-mcp` will do once published. Packs the tarball npm
+// would upload, then installs and runs it with an empty npm cache and home
+// directory, outside this repo, so nothing from the workspace can leak in.
+import { spawn, execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const pkgDir = join(root, 'packages/mcp')
+const work = mkdtempSync(join(tmpdir(), 'meow-mcp-pack-'))
+const home = join(work, 'home')
+const app = join(work, 'app')
+const MIN_TOOLS = 59
+
+const cleanEnv = {
+  PATH: process.env.PATH,
+  HOME: home,
+  npm_config_cache: join(work, 'npm-cache'),
+  npm_config_userconfig: join(work, 'npmrc'),
+  npm_config_update_notifier: 'false',
+  npm_config_fund: 'false',
+  npm_config_audit: 'false',
+}
+
+function run(cmd, args, opts = {}) {
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts })
+}
+
+function handshake(command, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...cleanEnv, MEOWLENDAR_API_KEY: 'pk_verify', MEOWLENDAR_API_URL: 'http://127.0.0.1:9' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error(`No answer from the server. stderr: ${stderr.slice(0, 400)}`))
+    }, 120_000)
+    let stdout = ''
+    let stderr = ''
+    child.stderr.on('data', (d) => (stderr += d))
+    child.on('error', reject)
+    child.stdout.on('data', (d) => {
+      stdout += d
+      for (const line of stdout.split('\n')) {
+        if (!line.trim()) continue
+        let msg
+        try {
+          msg = JSON.parse(line)
+        } catch {
+          continue
+        }
+        if (msg.id === 1) {
+          child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
+          child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) + '\n')
+        }
+        if (msg.id === 2) {
+          clearTimeout(timer)
+          child.kill()
+          resolve(msg.result.tools.length)
+        }
+      }
+    })
+    child.stdin.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'verify-mcp-pack', version: '1' },
+        },
+      }) + '\n',
+    )
+  })
+}
+
+try {
+  execFileSync('mkdir', ['-p', home, app])
+  writeFileSync(join(work, 'npmrc'), '')
+  writeFileSync(join(app, 'package.json'), '{"name":"clean-machine","private":true}')
+
+  const packOut = run('npm', ['pack', '--json', '--pack-destination', work], { cwd: pkgDir })
+  const packed = JSON.parse(packOut.slice(packOut.indexOf('[')))[0]
+  const tarball = join(work, packed.filename)
+  const files = packed.files.map((f) => f.path)
+  console.log(`packed ${packed.filename}: ${packed.files.length} files, ${packed.size} bytes`)
+  const stray = files.filter((f) => !/^(dist\/|README\.md$|LICENSE$|package\.json$)/.test(f))
+  if (stray.length) throw new Error(`Unexpected files in the tarball: ${stray.join(', ')}`)
+
+  // `npx -y --package=<tarball>` is the same path as `npx -y meowlendar-mcp`.
+  const viaNpx = await handshake(
+    'npx',
+    ['-y', `--package=${tarball}`, 'meowlendar-mcp'],
+    app,
+  )
+  console.log(`npx from a clean cache: ${viaNpx} tools`)
+  if (viaNpx < MIN_TOOLS) throw new Error(`Expected at least ${MIN_TOOLS} tools, got ${viaNpx}`)
+
+  run('npm', ['install', '--no-save', tarball], { cwd: app, env: cleanEnv })
+  const viaInstall = await handshake(join(app, 'node_modules/.bin/meowlendar-mcp'), [], app)
+  console.log(`npm install from a clean cache: ${viaInstall} tools`)
+  if (viaInstall < MIN_TOOLS) throw new Error(`Expected at least ${MIN_TOOLS} tools, got ${viaInstall}`)
+
+  console.log('ok: the published package will start from a clean machine')
+} finally {
+  rmSync(work, { recursive: true, force: true })
+}

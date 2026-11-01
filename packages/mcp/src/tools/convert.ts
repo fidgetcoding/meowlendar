@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getConvertToolDefinitions(): ToolDefinition[] {
@@ -9,7 +9,7 @@ export function getConvertToolDefinitions(): ToolDefinition[] {
         'Convert a calendar item between types: event, task, or routine. All 6 conversion directions are supported. Side effects depend on the direction:\n' +
         '- Event -> Task/Routine: The Google Calendar event is DELETED. Attendees are notified of cancellation.\n' +
         '- Task/Routine -> Event: A new Google Calendar event is CREATED on the specified calendar. The original Supabase item is deleted.\n' +
-        '- Task <-> Routine: No Google Calendar impact (both are Poolendar-only). Task->Routine requires a repeat_pattern. Routine->Task strips recurrence.\n' +
+        '- Task <-> Routine: No Google Calendar impact (both are Meowlendar-only). Task->Routine requires a repeat_pattern. Routine->Task strips recurrence.\n' +
         '- Task with subtasks -> Event/Routine: Subtasks are discarded (events/routines do not support subtasks).',
       inputSchema: {
         type: 'object' as const,
@@ -45,7 +45,7 @@ export function getConvertToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getConvertToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
+export function getConvertToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
   return {
     convert_item: async (args) => {
       const result = await client.convert({

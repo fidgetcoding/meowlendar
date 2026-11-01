@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getBookingToolDefinitions(): ToolDefinition[] {
@@ -254,7 +254,7 @@ export function getBookingToolDefinitions(): ToolDefinition[] {
 }
 
 export function getBookingToolHandlers(
-  client: PoolendarClient
+  client: MeowlendarClient
 ): Record<string, ToolHandler> {
   return {
     list_booking_links: async () => {

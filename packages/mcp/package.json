@@ -1,15 +1,16 @@
 {
-  "name": "poolendar-mcp",
+  "name": "meowlendar-mcp",
   "version": "0.1.0",
   "type": "module",
-  "description": "MCP server for Poolendar — calendar, tasks, routines, and booking tools for Claude Code and other MCP clients",
+  "description": "MCP server for Meowlendar: calendar, tasks, routines, and booking tools for Claude Code and other MCP clients",
   "main": "./dist/index.js",
   "bin": {
-    "poolendar-mcp": "./dist/index.js"
+    "meowlendar-mcp": "./dist/index.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
@@ -31,5 +32,29 @@
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "MIT",
+  "author": "Nate Davidovich",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fidgetcoding/meowlendar.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/fidgetcoding/meowlendar/tree/main/packages/mcp",
+  "bugs": {
+    "url": "https://github.com/fidgetcoding/meowlendar/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "calendar",
+    "tasks",
+    "claude",
+    "model-context-protocol"
+  ]
 }

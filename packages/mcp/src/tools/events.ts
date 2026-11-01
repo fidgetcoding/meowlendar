@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getEventToolDefinitions(): ToolDefinition[] {
@@ -225,7 +225,7 @@ export function getEventToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getEventToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
+export function getEventToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
   return {
     list_events: async (args) => {
       const events = await client.listEvents({

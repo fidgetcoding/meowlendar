@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getRoutineToolDefinitions(): ToolDefinition[] {
@@ -15,7 +15,7 @@ export function getRoutineToolDefinitions(): ToolDefinition[] {
     {
       name: 'create_routine',
       description:
-        'Create a new routine with a recurrence pattern. Routines appear on the calendar at their scheduled time every day/week/etc. based on the recurrence rule. Unlike events, routines do NOT sync to Google Calendar — they exist only in Poolendar.',
+        'Create a new routine with a recurrence pattern. Routines appear on the calendar at their scheduled time every day/week/etc. based on the recurrence rule. Unlike events, routines do NOT sync to Google Calendar — they exist only in Meowlendar.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -171,7 +171,7 @@ export function getRoutineToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getRoutineToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
+export function getRoutineToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
   return {
     list_routines: async () => {
       const routines = await client.listRoutines()

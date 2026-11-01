@@ -1,4 +1,4 @@
-import type { PoolendarClient } from '@poolendar/api-client'
+import type { MeowlendarClient } from '@poolendar/api-client'
 import type { ToolDefinition, ToolHandler } from '../types.js'
 
 export function getTaskToolDefinitions(): ToolDefinition[] {
@@ -28,7 +28,7 @@ export function getTaskToolDefinitions(): ToolDefinition[] {
     {
       name: 'create_task',
       description:
-        'Create a new task. IMPORTANT: When "scheduled_start" and "scheduled_end" are provided, the task appears DIRECTLY on the calendar grid at that time slot — it does NOT go to the inbox. This is Poolendar\'s core differentiator from Morgen. Without scheduled times, the task lives in the task panel and kanban board only.',
+        'Create a new task. IMPORTANT: When "scheduled_start" and "scheduled_end" are provided, the task appears DIRECTLY on the calendar grid at that time slot — it does NOT go to the inbox. Without scheduled times, the task lives in the task panel and kanban board only.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -338,7 +338,7 @@ export function getTaskToolDefinitions(): ToolDefinition[] {
   ]
 }
 
-export function getTaskToolHandlers(client: PoolendarClient): Record<string, ToolHandler> {
+export function getTaskToolHandlers(client: MeowlendarClient): Record<string, ToolHandler> {
   return {
     list_tasks: async (args) => {
       const tasks = await client.listTasks({

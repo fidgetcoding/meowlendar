@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "setup:local": "node scripts/setup-local.mjs",
+    "verify:mcp-pack": "node scripts/verify-mcp-pack.mjs",
     "dev": "turbo dev --filter=@poolendar/web",
     "build": "turbo build",
     "lint": "turbo lint",
