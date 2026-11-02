@@ -1,4 +1,4 @@
-import { test as setup, expect } from '@playwright/test'
+import { test as setup, expect } from './test'
 
 // Signs in through the real login form (email/password path, spec #91) and
 // persists the session as storageState for the authed project. Runs only when

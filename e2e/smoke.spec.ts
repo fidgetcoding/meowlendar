@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 
 // The only spec that runs without a backend — the login page is a static client
 // page (no DB). It's the fast gate that the app boots and renders at all.

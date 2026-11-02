@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Locator } from '@playwright/test'
+import { test, expect, type Page, type Locator } from './test'
 import { SEED } from './seed'
 
 // DB-dependent calendar-grid flows (#12–#15). These require a live Supabase

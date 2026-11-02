@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { SEED } from './seed'
 
 const E2E_LIVE = !!process.env.E2E_BASE

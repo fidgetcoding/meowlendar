@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Locator } from '@playwright/test'
+import { test, expect, type Page, type Locator } from './test'
 import { SEED } from './seed'
 
 const E2E_LIVE = !!process.env.E2E_BASE

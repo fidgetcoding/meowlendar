@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { SILENT_LAUNCH } from './e2e/silent-browser'
 
 // E2E targets an external stack when E2E_BASE is set (CI / live Supabase);
 // otherwise Playwright boots the web app itself on a dedicated port. The
@@ -16,6 +17,8 @@ export default defineConfig({
   use: {
     baseURL: E2E_BASE || `http://127.0.0.1:${PORT}`,
     trace: 'on-first-retry',
+    headless: true,
+    launchOptions: SILENT_LAUNCH,
     // Pin timezone + locale so seeded times/dates render deterministically
     // regardless of the host machine's settings.
     timezoneId: 'America/New_York',

@@ -1,4 +1,4 @@
-import { test as setup } from '@playwright/test'
+import { test as setup } from './test'
 import { seedBaseline } from './seed'
 
 // Runs in the `setup` project (alongside auth.setup.ts) before the authed

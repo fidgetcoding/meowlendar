@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type Page } from '@playwright/test'
+import { SILENT_LAUNCH, stubSoundAndSpeech } from '../../../e2e/silent-browser'
 import { APP, createUser, fakes, serviceClient, type TestUser } from './helpers'
 
 // Clicks through the real UI in a browser, with a local fake standing in for Google.
@@ -40,8 +41,10 @@ describe('calendar settings in a real browser, against fake Google', () => {
     await fakes('google/login-as', { email })
 
     user = await createUser('ui')
-    browser = await chromium.launch()
-    page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+    browser = await chromium.launch(SILENT_LAUNCH)
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+    await context.addInitScript(stubSoundAndSpeech)
+    page = await context.newPage()
 
     await page.goto(`${APP}/login`)
     await page.getByRole('textbox', { name: /email/i }).fill(user.email)

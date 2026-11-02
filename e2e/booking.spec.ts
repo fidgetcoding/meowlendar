@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './test'
 import { SEED } from './seed'
 
 // External booking happy path (#57b). Visits the path-based public booking page

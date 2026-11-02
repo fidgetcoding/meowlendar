@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './test'
 
 // A brand new account with no Google connected: its own sign-up, no seeded data.
 const E2E_LIVE = !!process.env.E2E_BASE
