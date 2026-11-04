@@ -1,8 +1,8 @@
+import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../lib/auth/helpers'
 import { paginate } from '../../../lib/pagination'
 
-type TaskTagRef = { task_id: string }
 
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   const typesParam = searchParams.get('types')
   const types = typesParam ? typesParam.split(',') : ['event', 'task', 'routine', 'booking_link']
-  const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 50)
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 50)
   const pattern = `%${safeQ}%`
 
   const seen = new Set<string>()
@@ -46,14 +46,15 @@ export async function GET(request: NextRequest) {
   if (types.includes('event')) {
     // Title + notes search
     queries.push(
-      Promise.resolve(supabase
+      readAll(supabase
         .from('events')
         .select('id, title, notes, start_time')
         .eq('user_id', userId)
         .or(`title.ilike.${pattern},notes.ilike.${pattern}`)
         .order('start_time', { ascending: false })
-        .limit(limit)
-        .then(({ data }) => {
+        .order('id'))
+        .then(({ data, error }) => {
+          if (error) throw error
           for (const e of data ?? []) {
             pushUnique({
               type: 'event',
@@ -63,19 +64,20 @@ export async function GET(request: NextRequest) {
               snippet: e.notes ? e.notes.slice(0, 200) : null,
             })
           }
-        }))
+        })
     )
 
     // Attendee email search (cast jsonb to text for partial matching)
     queries.push(
-      Promise.resolve(supabase
+      readAll(supabase
         .from('events')
         .select('id, title, notes, start_time, attendees')
         .eq('user_id', userId)
-        .or(`attendees::text.ilike.${pattern}`)
+        .ilike('attendee_search_text', pattern)
         .order('start_time', { ascending: false })
-        .limit(limit)
-        .then(({ data }) => {
+        .order('id'))
+        .then(({ data, error }) => {
+          if (error) throw error
           for (const e of data ?? []) {
             const attendees = (e.attendees ?? []) as { email: string; name?: string }[]
             const matchedEmail = attendees.find(
@@ -91,21 +93,22 @@ export async function GET(request: NextRequest) {
                 : e.notes ? e.notes.slice(0, 200) : null,
             })
           }
-        }))
+        })
     )
   }
 
   if (types.includes('task')) {
     // Title + notes search
     queries.push(
-      Promise.resolve(supabase
+      readAll(supabase
         .from('tasks')
         .select('id, title, notes, due_date, created_at')
         .eq('user_id', userId)
         .or(`title.ilike.${pattern},notes.ilike.${pattern}`)
         .order('created_at', { ascending: false })
-        .limit(limit)
-        .then(({ data }) => {
+        .order('id'))
+        .then(({ data, error }) => {
+          if (error) throw error
           for (const t of data ?? []) {
             pushUnique({
               type: 'task',
@@ -115,57 +118,35 @@ export async function GET(request: NextRequest) {
               snippet: t.notes ? t.notes.slice(0, 200) : null,
             })
           }
-        }))
+        })
     )
 
-    // Tag name search — find tasks via task_tags join
-    queries.push(
-      Promise.resolve(supabase
-        .from('tags')
-        .select('name, task_tags(task_id)')
-        .ilike('name', pattern)
-        .eq('user_id', userId)
-        .then(async ({ data: tagMatches }) => {
-          const tagTaskIds = tagMatches?.flatMap((t) =>
-            ((t.task_tags as TaskTagRef[] | null) ?? []).map((tt) => tt.task_id)
-          ) ?? []
-          if (tagTaskIds.length === 0) return
-
-          const { data: tagTasks } = await supabase
-            .from('tasks')
-            .select('id, title, notes, due_date, created_at')
-            .in('id', tagTaskIds)
-            .eq('user_id', userId)
-            .limit(limit)
-
-          for (const t of tagTasks ?? []) {
-            const matchedTagName = tagMatches?.find((tag) =>
-              ((tag.task_tags as TaskTagRef[] | null) ?? []).some((tt) => tt.task_id === t.id)
-            )?.name
-            pushUnique({
-              type: 'task',
-              id: t.id,
-              title: t.title,
-              date: t.due_date || t.created_at,
-              snippet: matchedTagName
-                ? `Tag: ${matchedTagName}`
-                : t.notes ? t.notes.slice(0, 200) : null,
-            })
-          }
-        }))
-    )
+    // Join the matching tag instead of building an unbounded IN() URL.
+    queries.push(readAll(supabase.from('tasks')
+      .select('id, title, notes, due_date, created_at, task_tags!inner(tags!inner(name))')
+      .eq('user_id', userId).ilike('task_tags.tags.name', pattern).order('id'))
+      .then(({ data, error }) => {
+        if (error) throw error
+        for (const task of data ?? []) {
+          const tags = task.task_tags as unknown as { tags: { name: string } }[]
+          pushUnique({ type: 'task', id: task.id, title: task.title,
+            date: task.due_date || task.created_at,
+            snippet: tags[0]?.tags.name ? `Tag: ${tags[0].tags.name}` : task.notes?.slice(0, 200) ?? null })
+        }
+      }))
   }
 
   if (types.includes('routine')) {
     queries.push(
-      Promise.resolve(supabase
+      readAll(supabase
         .from('routines')
         .select('id, title, notes, created_at')
         .eq('user_id', userId)
         .or(`title.ilike.${pattern},notes.ilike.${pattern}`)
         .order('created_at', { ascending: false })
-        .limit(limit)
-        .then(({ data }) => {
+        .order('id'))
+        .then(({ data, error }) => {
+          if (error) throw error
           for (const r of data ?? []) {
             pushUnique({
               type: 'routine',
@@ -175,20 +156,21 @@ export async function GET(request: NextRequest) {
               snippet: r.notes ? r.notes.slice(0, 200) : null,
             })
           }
-        }))
+        })
     )
   }
 
   if (types.includes('booking_link')) {
     queries.push(
-      Promise.resolve(supabase
+      readAll(supabase
         .from('booking_links')
         .select('id, name, notes, created_at')
         .eq('user_id', userId)
         .or(`name.ilike.${pattern},notes.ilike.${pattern}`)
         .order('created_at', { ascending: false })
-        .limit(limit)
-        .then(({ data }) => {
+        .order('id'))
+        .then(({ data, error }) => {
+          if (error) throw error
           for (const b of data ?? []) {
             pushUnique({
               type: 'booking_link',
@@ -198,21 +180,22 @@ export async function GET(request: NextRequest) {
               snippet: b.notes ? b.notes.slice(0, 200) : null,
             })
           }
-        }))
+        })
     )
   }
 
-  await Promise.all(queries)
+  try { await Promise.all(queries) }
+  catch { return NextResponse.json({ error: 'Failed to search' }, { status: 500 }) }
 
   // Sort by date descending
   results.sort((a, b) => {
     const dateA = a.date ? new Date(a.date).getTime() : 0
     const dateB = b.date ? new Date(b.date).getTime() : 0
-    return dateB - dateA
+    return dateB - dateA || `${a.type}:${a.id}`.localeCompare(`${b.type}:${b.id}`)
   })
 
-  // Cursor-paginate the merged, deduped results. The per-table `.limit(limit)`
-  // above bounds the DB reads; this bounds the returned page. Results can share
-  // an id across entity types, so the cursor key is `type:id`.
-  return NextResponse.json(paginate(results, searchParams, (r) => `${r.type}:${r.id}`))
+  // Apply the public page only after all sources have been read and merged.
+  const page = new URLSearchParams(searchParams)
+  if (searchParams.has('limit')) page.set('limit', String(limit))
+  return NextResponse.json(paginate(results, page, (r) => `${r.type}:${r.id}`))
 }

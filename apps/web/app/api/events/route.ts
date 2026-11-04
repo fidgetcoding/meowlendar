@@ -1,11 +1,12 @@
+
+import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
-import { createGoogleEvent } from '../../../lib/google/calendar'
-import type { GoogleEventInsert } from '../../../lib/google/types'
+import { pushEvent } from '../../../lib/google/sync'
 import { createEventSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
-import { eventsInWindowFilter, expandOccurrences, googleRecurrence, isValidRecurrenceRule } from '../../../lib/recurrence'
-import type { CalendarEvent, CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
+import { eventsInWindowFilter, expandOccurrences, isValidRecurrenceRule } from '../../../lib/recurrence'
+import type { Calendar, CalendarEvent, CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
 
 // The kinds `GET /api/events` can return. `events` is always included (this is
 // the events endpoint); `tasks` and `routines` are on by default and can be
@@ -75,17 +76,17 @@ export async function GET(request: NextRequest) {
       query = query.eq('calendar_id', calendarId)
     } else {
       // A calendar turned off in settings stays out of the default view.
-      const { data: hidden } = await supabase
+      const { data: hidden } = await readAll(supabase
         .from('calendars')
         .select('id')
         .eq('user_id', userId)
-        .eq('is_active', false)
+        .eq('is_active', false).order('id'))
       if (hidden?.length) {
         query = query.not('calendar_id', 'in', `(${hidden.map((c) => c.id).join(',')})`)
       }
     }
 
-    const { data, error } = await query
+    const { data, error } = await readAll(query.order('id'))
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 })
     }
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
 
     if (calendarId) query = query.eq('calendar_id', calendarId)
 
-    const { data, error } = await query
+    const { data, error } = await readAll(query.order('id'))
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch scheduled tasks' }, { status: 500 })
     }
@@ -139,14 +140,14 @@ export async function GET(request: NextRequest) {
   if (wantRoutines) {
     const startDate = start.slice(0, 10)
     const endDate = end.slice(0, 10)
-    const { data } = await supabase
+    const { data } = await readAll(supabase
       .from('routine_instances')
       .select(
         'id, routine_id, date, status, override_start_time, override_end_time, override_title, ' +
           'routines!inner(user_id, title, start_time, end_time, timezone, calendar_id)'
       )
       .gte('date', startDate)
-      .lte('date', endDate)
+      .lte('date', endDate).order('id'))
 
     for (const ri of (data ?? []) as unknown as RoutineInstanceRow[]) {
       const routine = ri.routines
@@ -174,7 +175,11 @@ export async function GET(request: NextRequest) {
   // Unify in calendar order (by effective start), then page.
   items.sort((a, b) => effectiveStart(a).localeCompare(effectiveStart(b)))
 
-  return NextResponse.json(paginate(items, searchParams))
+  return NextResponse.json(paginate(items, searchParams, (item) =>
+    item.kind === 'event' && item.occurrence_start
+      ? `${item.id}::${item.occurrence_start}`
+      : item.id,
+  ))
 }
 
 function effectiveStart(item: CalendarItem): string {
@@ -243,7 +248,7 @@ export async function POST(request: NextRequest) {
     attendees: input.attendees,
     reminders: input.reminders,
     status: 'confirmed',
-    sync_status: 'synced',
+    sync_status: calendar.source === 'local' ? 'synced' : 'pending_push',
   }
 
   // Insert into Supabase first
@@ -264,89 +269,12 @@ export async function POST(request: NextRequest) {
   if (calendar.source === 'local' || !calendar.google_account_id || !calendar.google_calendar_id) {
     return NextResponse.json(event, { status: 201 })
   }
-  const { google_account_id: googleAccountId, google_calendar_id: googleCalendarId } = calendar
-
-  // Sync to Google Calendar
   try {
-    const googleEventBody: GoogleEventInsert = {
-      summary: input.title,
-      description: input.notes ?? undefined,
-      location: input.location ?? undefined,
-      visibility: input.privacy === 'private' ? 'private' : 'public',
-      transparency: input.visibility === 'free' ? 'transparent' : 'opaque',
-      start: input.is_all_day
-        ? { date: input.start_time.split('T')[0], timeZone: input.timezone }
-        : { dateTime: input.start_time, timeZone: input.timezone },
-      end: input.is_all_day
-        ? { date: input.end_time.split('T')[0], timeZone: input.timezone }
-        : { dateTime: input.end_time, timeZone: input.timezone },
-    }
-
-    if (input.attendees.length > 0) {
-      googleEventBody.attendees = input.attendees.map((a) => ({
-        email: a.email,
-        displayName: a.name,
-      }))
-    }
-
-    if (input.recurrence_rule) {
-      googleEventBody.recurrence = googleRecurrence(input.recurrence_rule)
-    }
-
-    if (input.reminders.length > 0) {
-      googleEventBody.reminders = {
-        useDefault: false,
-        overrides: input.reminders.map((r) => ({
-          method: 'popup',
-          minutes: r.minutes_before,
-        })),
-      }
-    }
-
-    const googleResult = await createGoogleEvent(
-      googleAccountId,
-      googleCalendarId,
-      googleEventBody,
-      input.conferencing
-    )
-
-    // Update the local event with Google's IDs and conferencing URL
-    const updateFields: Record<string, unknown> = {
-      google_event_id: googleResult.id,
-      etag: googleResult.etag,
-      sync_status: 'synced',
-    }
-
-    if (googleResult.hangoutLink) {
-      updateFields.conferencing_url = googleResult.hangoutLink
-    }
-
-    const { data: updatedEvent, error: updateError } = await supabase
-      .from('events')
-      .update(updateFields)
-      .eq('id', event.id)
-      .select()
-      .single()
-
-    if (updateError || !updatedEvent) {
-      // Google sync succeeded but local update failed -- return what we have
-      return NextResponse.json(
-        { ...event, ...updateFields },
-        { status: 201 }
-      )
-    }
-
-    return NextResponse.json(updatedEvent, { status: 201 })
+    const pushed = await pushEvent(event as CalendarEvent, calendar as Calendar, input.conferencing)
+    return NextResponse.json(pushed, { status: 201 })
   } catch {
-    // Google sync failed -- mark as pending and still return the event
-    await supabase
-      .from('events')
-      .update({ sync_status: 'pending_push' })
-      .eq('id', event.id)
-
-    return NextResponse.json(
-      { ...event, sync_status: 'pending_push' },
-      { status: 201 }
-    )
+    // The local row is already pending; never overwrite a newer edit here.
+    const { data: latest } = await supabase.from('events').select('*').eq('id', event.id).maybeSingle()
+    return NextResponse.json(latest ?? event, { status: 201 })
   }
 }

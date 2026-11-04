@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { format } from 'date-fns'
 import type {
   CalendarEvent,
   Task,
@@ -17,7 +16,7 @@ import { PreviewPopover } from './PreviewPopover'
 import { ContextMenu } from './ContextMenu'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
 import { parseRoutineItemId } from './grid-helpers'
-import { parseEventItemId } from '@/lib/recurrence'
+import { parseEventItemId, timeInZone, dateInZone } from '@/lib/recurrence'
 import { useRecurringEventChange } from '@/lib/hooks/use-events'
 import type { RecurrenceEditScope } from './RecurrenceEditDialog'
 
@@ -79,7 +78,7 @@ export function CalendarWorkspace({
 
   // ---- helpers ----
   function routineDateOf(item: CalendarItemData): string {
-    return format(item.startTime, 'yyyy-MM-dd')
+    return parseRoutineItemId(item.id).date ?? dateInZone(item.startTime, item.routine?.timezone ?? 'America/New_York')
   }
 
   function createRoutineRow(
@@ -146,7 +145,7 @@ export function CalendarWorkspace({
       if (!prev) return
       undoable.updateRoutine(
         routineId,
-        { start_time: toTimeString(newStart), end_time: toTimeString(newEnd) },
+        { start_time: timeInZone(newStart, prev.timezone), end_time: timeInZone(newEnd, prev.timezone) },
         prev
       )
     }
@@ -179,7 +178,7 @@ export function CalendarWorkspace({
       const { routineId } = parseRoutineItemId(itemId)
       const prev = routines.find((r) => r.id === routineId)
       if (!prev) return
-      undoable.updateRoutine(routineId, { end_time: toTimeString(newEnd) }, prev)
+      undoable.updateRoutine(routineId, { end_time: timeInZone(newEnd, prev.timezone) }, prev)
     }
   }
 

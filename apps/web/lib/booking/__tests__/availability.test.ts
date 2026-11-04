@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   addDaysStr,
+  timeInTimezoneToUtc,
   computeBlockedIntervals,
   computeAvailableSlots,
   hasConflict,
@@ -157,4 +158,18 @@ describe('#56 shared availability pool', () => {
     expect(starts).not.toContain(new Date(et('14:00')).toISOString())
     expect(starts).toContain(new Date(et('15:00')).toISOString())
   })
+})
+
+
+describe('booking wall clock conversion', () => {
+  it('uses the offset at the requested time on DST transition days', () => {
+    expect(timeInTimezoneToUtc('2026-03-08', '04:00', NY).toISOString())
+      .toBe('2026-03-08T08:00:00.000Z')
+    expect(timeInTimezoneToUtc('2026-11-01', '04:00', NY).toISOString())
+      .toBe('2026-11-01T09:00:00.000Z')
+  })
+})
+
+it('rejects an invalid booking timezone instead of silently scheduling in UTC', () => {
+  expect(() => timeInTimezoneToUtc('2030-01-08', '09:00', 'Invalid/Timezone')).toThrow(RangeError)
 })

@@ -130,13 +130,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     delete updateFields.completed_at
   }
 
-  const { data: task, error: updateError } = await supabase
-    .from('tasks')
-    .update(updateFields)
-    .eq('id', id)
-    .eq('user_id', userId)
-    .select()
-    .single()
+  const { data: task, error: updateError } = await supabase.rpc('update_task_with_tags', {
+    p_id: id, p_patch: updateFields, p_tag_ids: tag_ids ?? null,
+  })
 
   if (updateError?.code === UNIQUE_VIOLATION) {
     return NextResponse.json(
@@ -152,35 +148,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Replace tags if provided
-  if (tag_ids !== undefined) {
-    await supabase
-      .from('task_tags')
-      .delete()
-      .eq('task_id', id)
-
-    if (tag_ids.length > 0) {
-      const tagRows = tag_ids.map((tagId) => ({
-        task_id: id,
-        tag_id: tagId,
-      }))
-
-      await supabase
-        .from('task_tags')
-        .insert(tagRows)
-    }
-  }
-
-  // Fetch tags for response
-  const { data: tagRecords } = await supabase
-    .from('task_tags')
-    .select('tag_id, tags(id, name, color, prefix)')
-    .eq('task_id', id)
-
-  return NextResponse.json({
-    ...task,
-    tags: (tagRecords ?? []).map((r) => r.tags),
-  })
+  return NextResponse.json(task)
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {

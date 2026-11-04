@@ -1,5 +1,7 @@
 'use client'
 
+import { readAll } from '@/lib/read-all'
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { BookingLink, Booking, BookingStatus } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
@@ -53,11 +55,11 @@ export function useBookingLinks() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      const { data, error } = await supabase
+      const { data, error } = await readAll(supabase
         .from('booking_links')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }).order('id'))
 
       if (error) throw error
       return data as BookingLink[]
@@ -251,11 +253,11 @@ export function useBookings(linkId: string) {
   return useQuery({
     queryKey: bookingKeys.bookings(linkId),
     queryFn: async (): Promise<Booking[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await readAll(supabase
         .from('bookings')
         .select('*')
         .eq('booking_link_id', linkId)
-        .order('start_time', { ascending: false })
+        .order('start_time', { ascending: false }).order('id'))
 
       if (error) throw error
       return data as Booking[]

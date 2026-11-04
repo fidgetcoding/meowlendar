@@ -1,5 +1,7 @@
 'use client'
 
+import { readAll } from '@/lib/read-all'
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Routine, RoutineInstance, RoutineInstanceStatus } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
@@ -43,10 +45,10 @@ export function useRoutines() {
   return useQuery({
     queryKey: routineKeys.lists(),
     queryFn: async (): Promise<Routine[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await readAll(supabase
         .from('routines')
         .select('*')
-        .order('start_time', { ascending: true })
+        .order('start_time', { ascending: true }).order('id'))
 
       if (error) throw error
       return data as Routine[]
@@ -247,13 +249,13 @@ export function useRoutineInstances(
   return useQuery({
     queryKey: routineKeys.instances(routineId, startDate, endDate),
     queryFn: async (): Promise<RoutineInstance[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await readAll(supabase
         .from('routine_instances')
         .select('*')
         .eq('routine_id', routineId)
         .gte('date', startDate)
         .lte('date', endDate)
-        .order('date', { ascending: true })
+        .order('date', { ascending: true }).order('id'))
 
       if (error) throw error
       return data as RoutineInstance[]
@@ -500,11 +502,26 @@ export function useTodayRoutineInstances() {
   return useQuery({
     queryKey: [...routineKeys.allInstances(), 'today', today],
     queryFn: async (): Promise<RoutineInstance[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await readAll(supabase
         .from('routine_instances')
         .select('*')
-        .eq('date', today)
+        .eq('date', today).order('id'))
 
+      if (error) throw error
+      return data as RoutineInstance[]
+    },
+  })
+}
+
+/** Saved completion/skip states across all visible routines; RLS scopes ownership. */
+export function useCalendarRoutineInstances(start: string, end: string, enabled: boolean) {
+  const supabase = createClient()
+  return useQuery({
+    queryKey: [...routineKeys.allInstances(), 'calendar', start, end],
+    enabled,
+    queryFn: async (): Promise<RoutineInstance[]> => {
+      const { data, error } = await readAll(supabase.from('routine_instances').select('*')
+        .gte('date', start).lte('date', end).order('id'))
       if (error) throw error
       return data as RoutineInstance[]
     },

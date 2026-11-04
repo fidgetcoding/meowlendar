@@ -42,12 +42,14 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  const { supabase, response } = createClient(request)
+  const session = createClient(request)
+  const { supabase } = session
 
   // Refresh session on every request
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const response = session.response
 
   const { pathname } = request.nextUrl
 
@@ -73,22 +75,23 @@ export async function middleware(request: NextRequest) {
   // API routes get their own auth handling via the authenticate() helper
   const isApiRoute = pathname.startsWith('/api/')
 
+  // Preserve refresh cookies when navigation itself needs a redirect.
+  const redirect = (pathname: string) => {
+    const url = request.nextUrl.clone()
+    url.pathname = pathname
+    const redirected = NextResponse.redirect(url)
+    for (const cookie of response.cookies.getAll()) redirected.cookies.set(cookie)
+    return redirected
+  }
+  if (user && pathname === '/login') return redirect('/')
+
   if (isPublicRoute || isApiRoute) {
     return response
   }
 
   // Protected routes: redirect to login if no session
   if (!user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  // Authenticated user visiting /login — redirect to app
-  if (user && pathname === '/login') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
+    return redirect('/login')
   }
 
   return response

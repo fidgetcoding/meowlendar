@@ -58,12 +58,13 @@ function taskToGoogle(task: TaskRow): GoogleEventInsert {
 /** The calendar the user picked, if it's still theirs and they can write to it. */
 async function resolveTarget(supabase: Service, userId: string, calendarId: unknown): Promise<GoogleTarget | null> {
   if (typeof calendarId !== 'string' || !calendarId) return null
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('calendars')
     .select('id, google_account_id, google_calendar_id, source, access_role')
     .eq('id', calendarId)
     .eq('user_id', userId)
     .maybeSingle()
+  if (error) throw new Error(`Failed to read task sync target: ${error.message}`)
   if (!data || data.source !== 'google') return null
   if (data.access_role !== 'owner' && data.access_role !== 'writer') return null
   return data as GoogleTarget
@@ -72,14 +73,16 @@ async function resolveTarget(supabase: Service, userId: string, calendarId: unkn
 /** Records the result. If the task was edited meanwhile, it stays marked for next time. */
 async function saveLink(supabase: Service, task: TaskRow, link: Record<string, unknown>) {
   const clean = { ...link, google_retry_count: 0, google_next_retry_at: null }
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('tasks')
     .update({ ...clean, google_dirty: false })
     .eq('id', task.id)
     .eq('updated_at', task.updated_at)
     .select('id')
+  if (error) throw new Error(`Failed to store task sync result: ${error.message}`)
   if (!data?.length) {
-    await supabase.from('tasks').update(clean).eq('id', task.id)
+    const { error: linkError } = await supabase.from('tasks').update(clean).eq('id', task.id)
+    if (linkError) throw new Error(`Failed to store changed task link: ${linkError.message}`)
   }
 }
 
@@ -107,7 +110,7 @@ async function removeFromGoogle(supabase: Service, task: TaskRow) {
  * base32hex ids.
  */
 export function googleEventIdForTask(taskId: string): string {
-  return `mw${taskId.replace(/-/g, '').toLowerCase()}`
+  return `mt${taskId.replace(/-/g, '').toLowerCase()}`
 }
 
 async function pushTask(supabase: Service, task: TaskRow, target: GoogleTarget) {
@@ -271,23 +274,28 @@ export async function applyIncomingTaskEvent(
   supabase: Service,
   googleEvent: GoogleEvent,
   userId: string,
+  calendarId: string,
 ): Promise<'updated' | 'deleted' | false> {
   const taskId = googleEvent.extendedProperties?.private?.[TASK_ID_PROPERTY]
   if (!taskId) return false
 
-  const { data: task } = await supabase
+  const { data: task, error: readError } = await supabase
     .from('tasks')
     .select(TASK_COLUMNS)
     .eq('id', taskId)
     .eq('user_id', userId)
     .maybeSingle()
+  if (readError) throw new Error(`Failed to read mirrored task: ${readError.message}`)
   const row = task as unknown as TaskRow | null
   // No such task for this user. Either way it must not become an event.
-  if (!row || row.google_event_id !== googleEvent.id) return 'updated'
+  if (!row || row.google_event_id !== googleEvent.id || row.google_calendar_id !== calendarId) return 'updated'
+
+  // A queued local edit wins even when the remote change is a deletion.
+  if (row.google_dirty) return 'updated'
 
   if (googleEvent.status === 'cancelled') {
     // Removed from the calendar on Google: the task goes back to being unscheduled.
-    await supabase
+    const { error } = await supabase
       .from('tasks')
       .update({
         scheduled_start: null,
@@ -298,13 +306,16 @@ export async function applyIncomingTaskEvent(
         google_dirty: false,
       })
       .eq('id', row.id)
+      .eq('updated_at', row.updated_at)
+      .eq('google_dirty', false)
+    if (error) throw new Error(`Failed to unschedule mirrored task: ${error.message}`)
     return 'deleted'
   }
 
-  if (row.google_dirty || row.google_etag === googleEvent.etag) return 'updated'
+  if (row.google_etag === googleEvent.etag) return 'updated'
 
   const title = (googleEvent.summary ?? row.title).replace(new RegExp(`^${DONE_PREFIX}`), '')
-  await supabase
+  const { error } = await supabase
     .from('tasks')
     .update({
       title,
@@ -315,5 +326,8 @@ export async function applyIncomingTaskEvent(
       google_etag: googleEvent.etag ?? null,
     })
     .eq('id', row.id)
+    .eq('updated_at', row.updated_at)
+    .eq('google_dirty', false)
+  if (error) throw new Error(`Failed to update mirrored task: ${error.message}`)
   return 'updated'
 }

@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { endOfDay, format, isToday, getDay, getISOWeek, startOfDay } from 'date-fns'
+import { addDays, endOfDay, format, isToday, getDay, getISOWeek, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarEvent, Task, Routine, Calendar } from '@poolendar/types'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
@@ -31,6 +31,7 @@ import {
   isDeclinedEvent,
   type GridView,
 } from './grid-helpers'
+import { useCalendarRoutineInstances } from '@/lib/hooks/use-routines'
 import { useUIStore } from '@/lib/stores/ui-store'
 
 interface CalendarGridProps {
@@ -163,6 +164,12 @@ export function CalendarGrid({
     return raw
   }, [currentDate, view, customDays, showWeekends])
 
+  // Include neighbouring host dates even across the largest UTC offsets.
+  const { data: routineInstances } = useCalendarRoutineInstances(
+    format(addDays(visibleDays[0] ?? currentDate, -2), 'yyyy-MM-dd'),
+    format(addDays(visibleDays[visibleDays.length - 1] ?? currentDate, 2), 'yyyy-MM-dd'),
+    routines.length > 0,
+  )
   const allItems = React.useMemo(() => {
     const windowStart = startOfDay(visibleDays[0] ?? currentDate)
     const windowEnd = endOfDay(visibleDays[visibleDays.length - 1] ?? currentDate)
@@ -178,7 +185,7 @@ export function CalendarGrid({
       taskItems = taskItems.filter((i) => i.task?.status !== 'done')
     }
 
-    const routineItems = routinesToItems(routines, visibleDays, calendars)
+    const routineItems = routinesToItems(routines, visibleDays, calendars, routineInstances)
 
     let combined = [...eventItems, ...taskItems, ...routineItems]
     if (mergeDuplicateEvents) {
@@ -189,6 +196,7 @@ export function CalendarGrid({
     events,
     tasks,
     routines,
+    routineInstances,
     calendars,
     visibleDays,
     showDeclinedEvents,

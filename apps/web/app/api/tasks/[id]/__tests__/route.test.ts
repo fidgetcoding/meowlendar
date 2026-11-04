@@ -81,6 +81,13 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
+  Object.assign(supabase, { rpc: vi.fn().mockImplementation(async () => {
+    const result = await (supabase.from('tasks') as unknown as Promise<{ data: Record<string, unknown> | null; error: unknown }>)
+    const entry = tableResults.task_tags
+    const tagResult = Array.isArray(entry) ? entry[entry.length - 1] : entry
+    const tags = Array.isArray(tagResult?.data) ? tagResult.data.map((row: { tags: unknown }) => row.tags) : []
+    return { ...result, data: result.data ? { ...result.data, tags } : null }
+  }) })
   vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }
@@ -297,8 +304,8 @@ describe('PATCH /api/tasks/:id for the vault sync', () => {
       task_tags: { data: [], error: null },
     })
     const res = await PATCH(createRequest('PATCH', `/api/tasks/${TEST_TASK_ID}`, body), routeParams(TEST_TASK_ID))
-    const builder = supabase.from.mock.results[1]?.value as { update?: ReturnType<typeof vi.fn> } | undefined
-    return { res, written: builder?.update?.mock.calls[0]?.[0] as Record<string, unknown> | undefined }
+    const rpc = (supabase as typeof supabase & { rpc: ReturnType<typeof vi.fn> }).rpc
+    return { res, written: rpc.mock.calls[0]?.[1]?.p_patch as Record<string, unknown> | undefined }
   }
 
   it('sets vault_ref and returns it', async () => {
@@ -373,4 +380,16 @@ describe('PATCH /api/tasks/:id for the vault sync', () => {
     const res = await GET(createRequest('GET', `/api/tasks/${TEST_TASK_ID}`), routeParams(TEST_TASK_ID))
     expect((await res.json()).vault_ref).toBe('work:abc')
   })
+})
+
+it('reports a failed atomic tag replacement instead of returning a partially updated task', async () => {
+  const tagId = '00000000-0000-4000-8000-000000000008'
+  const supabase = mockAuthWithTables({
+    tasks: { data: { id: TEST_TASK_ID, title: 'Changed', status: 'backlog' }, error: null },
+    tags: { data: [{ id: tagId }], error: null },
+    task_tags: { data: null, error: { message: 'tag storage failed' } },
+  })
+  Object.assign(supabase, { rpc: vi.fn().mockResolvedValue({ data: null, error: { message: 'tag storage failed' } }) })
+  const response = await PATCH(createRequest('PATCH', `/api/tasks/${TEST_TASK_ID}`, { title: 'Changed', tag_ids: [tagId] }), routeParams(TEST_TASK_ID))
+  expect(response.status).toBe(500)
 })

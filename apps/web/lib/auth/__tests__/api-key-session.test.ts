@@ -51,6 +51,15 @@ describe('getApiKeyAccessToken', () => {
     expect(verifyOtp).toHaveBeenCalledWith({ type: 'magiclink', token_hash: 'hash' })
   })
 
+  it('shares one session mint across concurrent requests for the same key', async () => {
+    maybeSingle.mockResolvedValue({ data: null })
+    const tokens = await Promise.all(Array.from({ length: 8 }, () =>
+      mod.getApiKeyAccessToken('key-1', 'user-1')))
+    expect(tokens).toEqual(Array(8).fill('minted'))
+    expect(generateLink).toHaveBeenCalledTimes(1)
+    expect(upsert).toHaveBeenCalledTimes(1)
+  })
+
   it('stores tokens encrypted, never in plain text', async () => {
     maybeSingle.mockResolvedValue({ data: null })
 

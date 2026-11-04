@@ -1,3 +1,5 @@
+
+import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
 import { createRoutineSchema } from '@poolendar/validators'
@@ -9,11 +11,11 @@ export async function GET(request: NextRequest) {
 
   const { userId, supabase } = auth
 
-  const { data, error } = await supabase
+  const { data, error } = await readAll(supabase
     .from('routines')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false }).order('id'))
 
   if (error) {
     return NextResponse.json(

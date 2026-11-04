@@ -25,6 +25,7 @@ interface CachedToken {
 }
 
 const memoryCache = new Map<string, CachedToken>()
+const inFlight = new Map<string, Promise<string>>()
 
 const authOptions = { auth: { persistSession: false, autoRefreshToken: false } }
 
@@ -117,6 +118,19 @@ export async function getApiKeyAccessToken(keyId: string, userId: string): Promi
     return inMemory.accessToken
   }
 
+  const pending = inFlight.get(keyId)
+  if (pending) return pending
+
+  const request = loadApiKeyAccessToken(keyId, userId)
+  inFlight.set(keyId, request)
+  try {
+    return await request
+  } finally {
+    inFlight.delete(keyId)
+  }
+}
+
+async function loadApiKeyAccessToken(keyId: string, userId: string): Promise<string> {
   const { data: stored } = await adminClient()
     .from('api_key_sessions')
     .select('access_token, refresh_token, expires_at')

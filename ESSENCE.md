@@ -30,3 +30,6 @@ From a fresh run on an empty local database, November 2, 2026, and again in CI:
 - Cross-user attacks that worked before the security pass are refused after it.
 
 See [EVOLUTION.md](EVOLUTION.md) for how it got here.
+
+
+Local maintenance verification, November 4, 2026: 1,643 unit tests, 150 real local-database integration tests, 24 browser checks, build/lint/types passed. This review branch adds atomic booking/task/recurrence writes, sync-race protection, complete database paging and timezone fixes. Nothing has been deployed or pushed; the November 2 history above remains the evidence for the earlier packaging checks. See [EVOLUTION.md](EVOLUTION.md).

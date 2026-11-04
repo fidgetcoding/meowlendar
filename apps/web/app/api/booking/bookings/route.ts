@@ -1,3 +1,4 @@
+import { readAll } from '@/lib/read-all'
 // Host-facing bookings list (spec #75: GET /api/booking/links/:id/bookings, here
 // generalized to the host's whole pool with optional filters). Session or API-key
 // auth. This is the canonical replacement for the deleted
@@ -17,34 +18,18 @@ export async function GET(request: NextRequest) {
   const statusFilter = searchParams.get('status') // pending | confirmed | cancelled
   const linkId = searchParams.get('link_id')
 
-  // Restrict to the host's own links (RLS also enforces this, but scoping the
-  // query keeps the result set tight and the join explicit).
-  const { data: hostLinks, error: linksError } = await supabase
-    .from('booking_links')
-    .select('id')
-    .eq('user_id', userId)
-
-  if (linksError) {
-    return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 })
-  }
-
-  const linkIds = (hostLinks ?? []).map((l) => l.id as string)
-  if (linkIds.length === 0) {
-    return NextResponse.json(paginate([], searchParams))
-  }
-
   let query = supabase
     .from('bookings')
     .select(
       'id, booking_link_id, booker_name, booker_email, booker_notes, start_time, end_time, status, google_event_id, cancel_token, created_at, updated_at, booking_links!inner(name, slug, duration_minutes)'
     )
-    .in('booking_link_id', linkIds)
+    .eq('booking_links.user_id', userId)
     .order('start_time', { ascending: false })
 
   if (statusFilter) query = query.eq('status', statusFilter)
   if (linkId) query = query.eq('booking_link_id', linkId)
 
-  const { data, error } = await query
+  const { data, error } = await readAll(query.order('id'))
   if (error) {
     return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 })
   }

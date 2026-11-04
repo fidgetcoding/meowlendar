@@ -1,3 +1,5 @@
+import { wallClockToInstant } from '../recurrence'
+
 // Pure shared availability engine for booking links (spec #56). Both the public
 // availability endpoint and the book endpoint route their conflict math through
 // here so the two can never disagree. No I/O: callers fetch the busy data (all
@@ -61,25 +63,9 @@ export function getDayOfWeek(dateStr: string): string {
 
 /** Interpret `dateStr`+`timeStr` as a wall-clock time in `timezone`, return the UTC instant. */
 export function timeInTimezoneToUtc(dateStr: string, timeStr: string, timezone: string): Date {
-  const isoStr = `${dateStr}T${timeStr}:00`
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  const parts = formatter.formatToParts(new Date(isoStr + 'Z'))
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0'
-  const utcDate = new Date(isoStr + 'Z')
-  const localInTz = new Date(
-    `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}Z`
-  )
-  const offset = localInTz.getTime() - utcDate.getTime()
-  return new Date(utcDate.getTime() - offset)
+  // Booking inputs must not use the recurrence helper's legacy-zone fallback.
+  new Intl.DateTimeFormat('en-US', { timeZone: timezone })
+  return wallClockToInstant(dateStr, timeStr, timezone)
 }
 
 export function addDaysStr(dateStr: string, days: number): string {

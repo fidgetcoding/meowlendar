@@ -35,7 +35,7 @@ const WRITE_BACK_DEBOUNCE_MS = 800
  */
 export function useSettingsSync() {
   const { data: profile } = useProfile()
-  const updateProfile = useUpdateProfile()
+  const { mutate: updateProfile } = useUpdateProfile()
   const hydratedRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -56,7 +56,7 @@ export function useSettingsSync() {
 
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => {
-        updateProfile.mutate({
+        updateProfile({
           settings: calendarStateToSettingsPatch(state),
         })
       }, WRITE_BACK_DEBOUNCE_MS)

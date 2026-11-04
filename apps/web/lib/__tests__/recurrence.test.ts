@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { RRule } from 'rrule'
 import {
   exceptionLines,
   dateInZone,
@@ -132,4 +133,33 @@ describe('routine helpers', () => {
     expect(wallClockToInstant('2030-01-08', '09:00', 'Asia/Dubai').toISOString()).toBe('2030-01-08T05:00:00.000Z')
     expect(dateInZone(new Date('2030-01-08T22:00:00.000Z'), 'Asia/Dubai')).toBe('2030-01-09')
   })
+})
+
+it('rejects nonpositive recurrence intervals before expansion can loop', () => {
+  expect(isValidRecurrenceRule('FREQ=DAILY;INTERVAL=0')).toBe(false)
+  expect(isValidRecurrenceRule('FREQ=DAILY;INTERVAL=-1')).toBe(false)
+  expect(isValidRecurrenceRule('FREQ=DAILY;COUNT=-2')).toBe(false)
+  expect(isValidRecurrenceRule('FREQ=DAILY;INTERVAL=2;COUNT=3')).toBe(true)
+})
+
+it('bounds the generated candidate array for a dense recurrence before materializing the whole window', () => {
+  const between = RRule.prototype.between
+  let materialized = 0
+  const spy = vi.spyOn(RRule.prototype, 'between').mockImplementation(function (this: RRule, ...args: Parameters<RRule['between']>) {
+    const result = between.apply(this, args)
+    materialized = result.length
+    return result
+  })
+  try {
+    const occurrences = expandOccurrences({ start_time: '2026-01-01T00:00:00Z', end_time: '2026-01-01T00:00:01Z', timezone: 'UTC', recurrence_rule: 'FREQ=SECONDLY' }, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-02T00:00:00Z'))
+    expect(occurrences).toHaveLength(1000)
+    expect(materialized).toBeLessThanOrEqual(1000)
+  } finally { spy.mockRestore() }
+})
+
+
+it('formats a dragged instant in the routine timezone for persistence', async () => {
+  const recurrence = await import('../recurrence')
+  expect(recurrence.timeInZone(new Date('2030-01-07T00:30:00Z'), 'Asia/Tokyo')).toBe('09:30')
+  expect(recurrence.timeInZone(new Date('2030-01-07T00:30:00Z'), 'America/New_York')).toBe('19:30')
 })

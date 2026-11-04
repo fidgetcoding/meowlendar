@@ -1,11 +1,12 @@
+import { pushEvent } from '@/lib/google/sync'
+import type { CalendarEvent, Calendar } from '@poolendar/types'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../../lib/auth/helpers'
-import { updateGoogleEvent, deleteGoogleEvent } from '../../../../lib/google/calendar'
-import type { GoogleEventWrite } from '../../../../lib/google/types'
+import { deleteGoogleEvent } from '../../../../lib/google/calendar'
 import { omit } from '../../../../lib/omit'
 import { deleteEventQuerySchema, updateEventSchema } from '@poolendar/validators'
-import { googleRecurrence, isValidRecurrenceRule } from '../../../../lib/recurrence'
-import { applyScopedDelete, applyScopedEdit } from '../../../../lib/recurrence-edit'
+import { isValidRecurrenceRule } from '../../../../lib/recurrence'
+import { applyScopedDelete, applyScopedEdit, deleteEventSeries } from '../../../../lib/recurrence-edit'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -97,6 +98,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   updateFields.updated_at = new Date().toISOString()
+  updateFields.sync_status = 'pending_push'
 
   if (typeof input.recurrence_rule === 'string' && !isValidRecurrenceRule(input.recurrence_rule)) {
     return NextResponse.json({ error: 'recurrence_rule is not a valid RRULE' }, { status: 422 })
@@ -137,91 +139,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  // Sync changes to Google Calendar if this event has a Google counterpart
-  if (existing.google_event_id) {
-    try {
-      const calendar = existing.calendars
-      const googlePatch: GoogleEventWrite = {}
-
-      if (input.title !== undefined) {
-        googlePatch.summary = input.title
-      }
-      if (input.notes !== undefined) {
-        googlePatch.description = input.notes
-      }
-      if (input.location !== undefined) {
-        googlePatch.location = input.location
-      }
-      if (input.privacy !== undefined) {
-        googlePatch.visibility = input.privacy === 'private' ? 'private' : 'public'
-      }
-      if (input.visibility !== undefined) {
-        googlePatch.transparency = input.visibility === 'free' ? 'transparent' : 'opaque'
-      }
-
-      const timezone = input.timezone ?? updatedEvent.timezone
-
-      if (input.start_time !== undefined || input.end_time !== undefined) {
-        const isAllDay = input.is_all_day ?? updatedEvent.is_all_day
-        const startTime = input.start_time ?? updatedEvent.start_time
-        const endTime = input.end_time ?? updatedEvent.end_time
-
-        if (isAllDay) {
-          googlePatch.start = { date: startTime.split('T')[0], timeZone: timezone }
-          googlePatch.end = { date: endTime.split('T')[0], timeZone: timezone }
-        } else {
-          googlePatch.start = { dateTime: startTime, timeZone: timezone }
-          googlePatch.end = { dateTime: endTime, timeZone: timezone }
-        }
-      }
-
-      if (input.attendees !== undefined) {
-        googlePatch.attendees = input.attendees.map((a) => ({
-          email: a.email,
-          displayName: a.name,
-        }))
-      }
-
-      if (input.recurrence_rule !== undefined) {
-        googlePatch.recurrence = input.recurrence_rule
-          ? googleRecurrence(input.recurrence_rule, existing.recurrence_exceptions)
-          : []
-      }
-
-      if (input.reminders !== undefined) {
-        googlePatch.reminders = input.reminders.length > 0
-          ? {
-              useDefault: false,
-              overrides: input.reminders.map((r) => ({
-                method: 'popup',
-                minutes: r.minutes_before,
-              })),
-            }
-          : { useDefault: true }
-      }
-
-      if (Object.keys(googlePatch).length > 0) {
-        const googleResult = await updateGoogleEvent(
-          calendar.google_account_id as string,
-          calendar.google_calendar_id as string,
-          existing.google_event_id,
-          googlePatch
-        )
-
-        if (googleResult?.etag) {
-          await supabase
-            .from('events')
-            .update({ etag: googleResult.etag, sync_status: 'synced' })
-            .eq('id', id)
-        }
-      }
-    } catch {
-      // Google sync failed -- mark as pending
-      await supabase
-        .from('events')
-        .update({ sync_status: 'pending_push' })
-        .eq('id', id)
-    }
+  // Every API/browser/background path uses the same revision-aware push.
+  const { data: calendar } = await supabase.from('calendars').select('*').eq('id', updatedEvent.calendar_id).single()
+  if (calendar?.source === 'google') {
+    try { await pushEvent(updatedEvent as CalendarEvent, calendar as Calendar) }
+    catch { /* The row remains pending for retry; never overwrite a newer edit. */ }
   }
 
   // Re-fetch to return the latest state (including any sync_status update)
@@ -286,37 +208,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  // Delete from Google Calendar if synced
+  try {
+    await deleteEventSeries(supabase, event)
+  } catch (error) {
+    const conflict = (error as { code?: string }).code === 'PT409'
+    return NextResponse.json({ error: conflict ? 'Event changed; reload before deleting' : 'Failed to delete event' }, { status: conflict ? 409 : 500 })
+  }
+  // The DB tombstones also retain cleanup if this immediate attempt fails.
   if (event.google_event_id) {
-    try {
-      await deleteGoogleEvent(
-        event.calendars.google_account_id,
-        event.calendars.google_calendar_id,
-        event.google_event_id
-      )
-    } catch {
-      // Google delete failed -- proceed with local delete anyway.
-      // The event is already gone from the user's perspective.
-    }
-  }
-
-  // Occurrences pulled out of this series go with it when the whole series goes.
-  if (event.recurrence_rule) {
-    await supabase.from('events').delete().eq('recurrence_id', id).eq('user_id', userId)
-  }
-
-  // Delete from Supabase (RLS-scoped; user_id filter is defense-in-depth)
-  const { error: deleteError } = await supabase
-    .from('events')
-    .delete()
-    .eq('id', id)
-    .eq('user_id', userId)
-
-  if (deleteError) {
-    return NextResponse.json(
-      { error: 'Failed to delete event' },
-      { status: 500 }
-    )
+    try { await deleteGoogleEvent(event.calendars.google_account_id, event.calendars.google_calendar_id, event.google_event_id) }
+    catch { /* Tombstone retry handles unavailable Google. */ }
   }
 
   return new NextResponse(null, { status: 204 })

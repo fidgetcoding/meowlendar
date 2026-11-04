@@ -1,3 +1,4 @@
+vi.mock('@/lib/google/sync', () => ({ pushEvent: vi.fn(async (event: unknown) => event) }))
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 import { GET, POST } from '../route'
@@ -75,8 +76,11 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   builder.maybeSingle = vi.fn().mockResolvedValue(result)
 
   // Make the builder itself thenable so bare `await query` works
+  let offset = 0
+  let end: number | undefined
+  builder.range = vi.fn((from: number, to: number) => { offset = from; end = to + 1; return builder })
   builder.then = (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
-    return Promise.resolve(result).then(resolve, reject)
+    return Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data }).then(resolve, reject)
   }
 
   return builder
@@ -124,6 +128,26 @@ function validEventBody() {
 
 describe('GET /api/events', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('pages through distinct occurrences of the same recurring event', async () => {
+    mockAuthWithTables({
+      events: { data: [{ id: 'series', start_time: '2026-06-15T09:00:00Z', end_time: '2026-06-15T10:00:00Z', timezone: 'UTC', recurrence_rule: 'FREQ=DAILY;COUNT=3' }], error: null },
+      calendars: { data: [], error: null },
+    })
+    const starts: string[] = []
+    let cursor: string | null = null
+    for (let page = 0; page < 4; page++) {
+      const params = new URLSearchParams({ start: '2026-06-15T00:00:00Z', end: '2026-06-18T00:00:00Z', include: 'events', limit: '1' })
+      if (cursor) params.set('cursor', cursor)
+      const response = await GET(createRequest('GET', `/api/events?${params}`))
+      const body = await response.json()
+      starts.push(...body.items.map((item: { start_time: string }) => item.start_time))
+      cursor = body.next_cursor
+      if (!cursor) break
+    }
+    expect(starts).toEqual(['2026-06-15T09:00:00.000Z', '2026-06-16T09:00:00.000Z', '2026-06-17T09:00:00.000Z'])
+    expect(cursor).toBeNull()
+  })
 
   it('returns events list with correct query params', async () => {
     const events = [

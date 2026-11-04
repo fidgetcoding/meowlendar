@@ -18,8 +18,11 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   for (const m of methods) builder[m] = vi.fn().mockReturnValue(builder)
   builder.single = vi.fn().mockResolvedValue(result)
   builder.maybeSingle = vi.fn().mockResolvedValue(result)
+  let offset = 0
+  let end: number | undefined
+  builder.range = vi.fn((from: number, to: number) => { offset = from; end = to + 1; return builder })
   builder.then = (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
-    Promise.resolve(result).then(resolve, reject)
+    Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data }).then(resolve, reject)
   return builder
 }
 

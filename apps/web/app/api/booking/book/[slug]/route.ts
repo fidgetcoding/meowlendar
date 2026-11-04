@@ -1,3 +1,5 @@
+
+import { readAll } from '@/lib/read-all'
 // SERVICE ROLE: Required — public endpoint (no auth). External visitors book
 // slots by slug without logging in.  The service client bypasses RLS to read
 // the booking_link + calendars and to insert bookings/Google events on behalf
@@ -28,7 +30,7 @@ import {
   type BookingLinkRecord,
 } from '@/lib/booking/notify'
 import { createBookingGoogleEvent } from '@/lib/booking/google-event'
-import { eventsInWindowFilter, expandOccurrences } from '@/lib/recurrence'
+import { eventsInWindowFilter, expandOccurrences, dateInZone, wallClockToInstant } from '@/lib/recurrence'
 
 type RouteParams = { params: Promise<{ slug: string }> }
 
@@ -48,20 +50,6 @@ function getDayOfWeek(date: Date, timezone: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone }).toLowerCase()
 }
 
-function timeToMinutes(time: string): number {
-  const parts = time.split(':').map(Number)
-  return (parts[0] ?? 0) * 60 + (parts[1] ?? 0)
-}
-
-function getTimeInTimezone(date: Date, timezone: string): string {
-  return date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: timezone,
-    hour12: false,
-  })
-}
-
 function isSlotWithinAvailability(
   startTime: Date,
   endTime: Date,
@@ -72,13 +60,11 @@ function isSlotWithinAvailability(
   const windows = availability.filter((w) => w.day === dayOfWeek)
   if (windows.length === 0) return false
 
-  const slotStartMinutes = timeToMinutes(getTimeInTimezone(startTime, timezone))
-  const slotEndMinutes = timeToMinutes(getTimeInTimezone(endTime, timezone))
-
-  return windows.some((w) => {
-    const windowStart = timeToMinutes(w.start)
-    const windowEnd = timeToMinutes(w.end)
-    return slotStartMinutes >= windowStart && slotEndMinutes <= windowEnd
+  const date = dateInZone(startTime, timezone)
+  return windows.some((window) => {
+    const windowStart = wallClockToInstant(date, window.start, timezone)
+    const windowEnd = wallClockToInstant(date, window.end, timezone)
+    return startTime >= windowStart && endTime <= windowEnd && endTime > startTime
   })
 }
 
@@ -176,10 +162,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const windowStart = new Date(startTime.getTime() - bufferMs).toISOString()
   const windowEnd = new Date(endTime.getTime() + bufferMs).toISOString()
 
-  const { data: hostLinks, error: linksError } = await supabase
+  const { data: hostLinks, error: linksError } = await readAll(supabase
     .from('booking_links')
     .select('id, buffer_minutes')
-    .eq('user_id', link.user_id)
+    .eq('user_id', link.user_id).order('id'))
 
   if (linksError || !hostLinks) {
     return NextResponse.json({ error: 'Failed to check availability' }, { status: 500 })
@@ -188,26 +174,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const bufferByLink = new Map<string, number>(
     hostLinks.map((l) => [l.id as string, (l.buffer_minutes as number) ?? 0])
   )
-  const linkIds = hostLinks.map((l) => l.id as string)
+  const maxHostBufferMs = hostLinks.reduce((max, link) => Math.max(max, Number(link.buffer_minutes) || 0), 0) * 60_000
 
-  const { data: poolBookings, error: bookingsError } = await supabase
+  const { data: poolBookings, error: bookingsError } = await readAll(supabase
     .from('bookings')
-    .select('booking_link_id, start_time, end_time')
-    .in('booking_link_id', linkIds)
+    .select('booking_link_id, start_time, end_time, booking_links!inner(user_id)')
+    .eq('booking_links.user_id', link.user_id)
     .in('status', ['confirmed', 'pending'])
-    .lt('start_time', windowEnd)
-    .gt('end_time', windowStart)
+    .lt('start_time', new Date(new Date(windowEnd).getTime() + maxHostBufferMs).toISOString())
+    .gt('end_time', new Date(new Date(windowStart).getTime() - maxHostBufferMs).toISOString()).order('id'))
 
   if (bookingsError) {
     return NextResponse.json({ error: 'Failed to check availability' }, { status: 500 })
   }
 
-  const { data: poolEvents, error: eventsError } = await supabase
+  const { data: poolEvents, error: eventsError } = await readAll(supabase
     .from('events')
     .select('start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions')
     .eq('user_id', link.user_id)
     .neq('status', 'cancelled')
-    .or(eventsInWindowFilter(windowStart, windowEnd))
+    .or(eventsInWindowFilter(windowStart, windowEnd)).order('id'))
 
   if (eventsError) {
     return NextResponse.json({ error: 'Failed to check calendar availability' }, { status: 500 })
@@ -259,18 +245,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     google_event_id: null as string | null,
   }
 
-  // Google event + booker invite happen ONLY on immediate confirmation. For
-  // requires_approval links, nothing external happens until the host approves.
-  if (status === 'confirmed') {
-    bookingRow.google_event_id = await createBookingGoogleEvent(supabase, link, {
-      booker_name: input.booker_name,
-      booker_email: input.booker_email,
-      booker_notes: input.booker_notes ?? null,
-      start_time: startTime.toISOString(),
-      end_time: endTime.toISOString(),
-    })
-  }
-
   const { data: booking, error: insertError } = await supabase
     .from('bookings')
     .insert(bookingRow)
@@ -283,6 +257,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 })
   }
+
+  // Reserve in PostgreSQL before any external event or invitation.
+  if (status === 'confirmed') await createBookingGoogleEvent(supabase, link, booking)
 
   // Notifications (never block the booking response).
   const bookingRecord: BookingRecord = {

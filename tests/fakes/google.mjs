@@ -228,6 +228,10 @@ export function createGoogleFake() {
 
     if (!tail && req.method === 'POST') {
       const input = JSON.parse(raw)
+      // Google custom IDs use base32hex, not arbitrary strings.
+      if (input.id !== undefined && (typeof input.id !== 'string' || !/^[a-v0-9]{5,1024}$/.test(input.id))) {
+        return send(res, 400, { error: { code: 400, message: 'Invalid event identifier.' } })
+      }
       // As on Google, an id can't be reused, even by a cancelled event.
       if (input.id && cal.events.has(input.id)) {
         return send(res, 409, { error: { code: 409, message: 'The requested identifier already exists.' } })

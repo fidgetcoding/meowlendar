@@ -1,3 +1,4 @@
+import { readAll } from '@/lib/read-all'
 import { createServerClient } from '@supabase/ssr'
 import { requireEnv } from '../env'
 import { encryptToken, decryptToken } from '../crypto'
@@ -224,20 +225,27 @@ export async function syncCalendarList(accountId: string, userId: string): Promi
   const supabase = getServiceClient()
   const accessToken = await getGoogleAccessToken(accountId)
 
-  const response = await fetch(`${googleApiBase()}/calendar/v3/users/me/calendarList`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!response.ok) {
-    throw new Error(`Google calendar list failed: ${response.status}`)
-  }
+  // Reconcile only after every page is loaded. A later-page calendar is not a
+  // deletion, and a failed page must never cause cascading local event removal.
+  const remote: GoogleCalendarListEntry[] = []
+  let pageToken: string | undefined
+  do {
+    const url = new URL(`${googleApiBase()}/calendar/v3/users/me/calendarList`)
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!response.ok) throw new Error(`Google calendar list failed: ${response.status}`)
+    const page = (await response.json()) as { items?: GoogleCalendarListEntry[]; nextPageToken?: string }
+    remote.push(...(page.items ?? []))
+    pageToken = page.nextPageToken
+  } while (pageToken)
 
-  const { items } = (await response.json()) as { items?: GoogleCalendarListEntry[] }
-  const remote = items ?? []
-
-  const { data: existing } = await supabase
+  const { data: existing, error: readError } = await readAll(supabase
     .from('calendars')
     .select('id, google_calendar_id')
-    .eq('google_account_id', accountId)
+    .eq('google_account_id', accountId).order('id'))
+  if (readError) throw new Error(`Failed to read calendar list: ${readError.message}`)
   const known = new Map((existing ?? []).map((c) => [c.google_calendar_id as string, c.id as string]))
 
   for (const cal of remote) {
@@ -248,9 +256,10 @@ export async function syncCalendarList(accountId: string, userId: string): Promi
     }
     const localId = known.get(cal.id)
     if (localId) {
-      await supabase.from('calendars').update(shared).eq('id', localId)
+      const { error } = await supabase.from('calendars').update(shared).eq('id', localId)
+      if (error) throw new Error(`Failed to update calendar: ${error.message}`)
     } else {
-      await supabase.from('calendars').insert({
+      const { error } = await supabase.from('calendars').insert({
         ...shared,
         user_id: userId,
         source: 'google',
@@ -259,13 +268,15 @@ export async function syncCalendarList(accountId: string, userId: string): Promi
         color: cal.backgroundColor ?? GOOGLE_CALENDAR_COLORS[cal.id] ?? '#4285F4',
         is_active: true,
       })
+      if (error) throw new Error(`Failed to insert calendar: ${error.message}`)
     }
   }
 
   const remoteIds = new Set(remote.map((c) => c.id))
   const gone = (existing ?? []).filter((c) => !remoteIds.has(c.google_calendar_id as string))
   for (const cal of gone) {
-    await supabase.from('calendars').delete().eq('id', cal.id)
+    const { error } = await supabase.from('calendars').delete().eq('id', cal.id)
+    if (error) throw new Error(`Failed to remove calendar: ${error.message}`)
   }
 }
 

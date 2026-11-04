@@ -1,5 +1,7 @@
 'use client'
 
+import { readAll } from '@/lib/read-all'
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Task, TaskStatus, TaskBoard, Tag } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
@@ -102,7 +104,7 @@ export function useTasks(filters: TaskListFilters = {}) {
         query = query.lte('scheduled_start', filters.scheduled_before)
       }
 
-      const { data, error } = await query
+      const { data, error } = await readAll(query.order('id'))
 
       if (error) throw error
 
@@ -161,56 +163,13 @@ export function useCreateTask() {
 
   return useMutation({
     mutationFn: async (input: CreateTaskInput): Promise<Task> => {
-      const { tag_ids, user_id, ...rest } = input
-
-      // Resolve the owner from the auth session when the caller didn't supply
-      // one. Never drop the create just because a profile query is in flight.
-      let ownerId = user_id ?? null
-      if (!ownerId) {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser()
-        if (authError) throw authError
-        if (!user) throw new Error('Not authenticated')
-        ownerId = user.id
-      }
-
-      const taskData = { ...rest, user_id: ownerId }
-
-      const { data: task, error } = await supabase
-        .from('tasks')
-        .insert(taskData)
-        .select('*')
-        .single()
-
+      const { tag_ids, ...rest } = input
+      // The RPC derives ownership from auth.uid() and commits task + tags together.
+      const { data, error } = await supabase.rpc('create_task_with_children', {
+        p_task: omit(rest, ['user_id']), p_tag_ids: tag_ids ?? [], p_subtasks: [],
+      })
       if (error) throw error
-
-      if (tag_ids?.length) {
-        const { error: tagError } = await supabase.from('task_tags').insert(
-          tag_ids.map((tag_id) => ({ task_id: task.id, tag_id })),
-        )
-        if (tagError) throw tagError
-
-        // Re-fetch with tags joined
-        const { data: full, error: fetchError } = await supabase
-          .from('tasks')
-          .select('*, task_tags(tag_id, tags(*))')
-          .eq('id', task.id)
-          .single()
-
-        if (fetchError) throw fetchError
-
-        const { task_tags, ...rest } = full as Record<string, unknown> & {
-          task_tags?: { tag_id: string; tags: Tag }[]
-        }
-        return {
-          ...rest,
-          tags: task_tags?.map((tt) => tt.tags).filter(Boolean) ?? [],
-        } as Task
-      }
-
-      return { ...task, tags: [] } as Task
+      return data as Task
     },
 
     onMutate: async (input) => {
@@ -278,50 +237,11 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: async ({ id, data }: UpdateTaskInput): Promise<Task> => {
       const { tag_ids, ...taskData } = data
-
-      if (Object.keys(taskData).length > 0) {
-        const { error } = await supabase
-          .from('tasks')
-          .update(taskData)
-          .eq('id', id)
-
-        if (error) throw error
-      }
-
-      if (tag_ids !== undefined) {
-        // Replace all tag associations
-        const { error: deleteError } = await supabase
-          .from('task_tags')
-          .delete()
-          .eq('task_id', id)
-
-        if (deleteError) throw deleteError
-
-        if (tag_ids.length > 0) {
-          const { error: insertError } = await supabase
-            .from('task_tags')
-            .insert(tag_ids.map((tag_id) => ({ task_id: id, tag_id })))
-
-          if (insertError) throw insertError
-        }
-      }
-
-      // Re-fetch full task with tags
-      const { data: full, error: fetchError } = await supabase
-        .from('tasks')
-        .select('*, task_tags(tag_id, tags(*))')
-        .eq('id', id)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      const { task_tags, ...rest } = full as Record<string, unknown> & {
-        task_tags?: { tag_id: string; tags: Tag }[]
-      }
-      return {
-        ...rest,
-        tags: task_tags?.map((tt) => tt.tags).filter(Boolean) ?? [],
-      } as Task
+      const { data: task, error } = await supabase.rpc('update_task_with_tags', {
+        p_id: id, p_patch: taskData, p_tag_ids: tag_ids ?? null,
+      })
+      if (error) throw error
+      return task as Task
     },
 
     onMutate: async ({ id, data }) => {

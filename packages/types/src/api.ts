@@ -66,7 +66,7 @@ export interface RoutineInstanceItem {
  * naturally excluded — only its children render (#23e).
  */
 export type CalendarItem =
-  | (import('./event').CalendarEvent & { kind: 'event' })
+  | (import('./event').CalendarEvent & { kind: 'event'; occurrence_start?: string })
   | (import('./task').Task & { kind: 'task' })
   | (RoutineInstanceItem & { kind: 'routine_instance' })
 

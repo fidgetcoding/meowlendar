@@ -1,3 +1,4 @@
+vi.mock('@/lib/google/sync', () => ({ pushEvent: vi.fn(async (event: unknown) => event) }))
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 import { GET, PATCH, DELETE } from '../route'
@@ -86,6 +87,7 @@ function mockAuthWithTables(
       return makeQueryBuilder(result)
     }),
   }
+  Object.assign(supabase, { rpc: vi.fn(async () => await supabase.from('events')) })
   vi.mocked(authenticate).mockResolvedValue({ userId: TEST_USER_ID, supabase: supabase as unknown as AuthResult['supabase'] })
   return supabase
 }

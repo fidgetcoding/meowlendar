@@ -1,3 +1,4 @@
+import { readAll } from '@/lib/read-all'
 import { createServerClient } from '@supabase/ssr'
 import type { CalendarEvent, Calendar } from '@poolendar/types'
 import {
@@ -222,7 +223,27 @@ export function mapLocalEventToGoogle(event: CalendarEvent): GoogleEventInsert {
  */
 export async function pullChanges(
   accountId: string,
-  options: { deadlineMs?: number } = {}
+  options: { deadlineMs?: number } = {},
+): Promise<{ created: number; updated: number; deleted: number; complete: boolean }> {
+  const supabase = getServiceClient()
+  const { data: token, error } = await supabase.rpc('claim_account_sync', { p_account: accountId })
+  if (error) throw new Error(`Failed to claim account sync: ${error.message}`)
+  if (!token) return { created: 0, updated: 0, deleted: 0, complete: false }
+  const renew = async () => {
+    const { data, error } = await supabase.rpc('renew_account_sync', { p_account: accountId, p_token: token })
+    if (error || !data) throw new Error('Account sync lease lost; retry with the saved cursor')
+  }
+  try { return await pullAccountChanges(accountId, options, renew) }
+  finally {
+    const { error } = await supabase.rpc('release_account_sync', { p_account: accountId, p_token: token })
+    if (error) console.error('[sync] failed to release account lease:', error.message)
+  }
+}
+
+async function pullAccountChanges(
+  accountId: string,
+  options: { deadlineMs?: number },
+  renew: () => Promise<void>,
 ): Promise<{ created: number; updated: number; deleted: number; complete: boolean }> {
   const supabase = getServiceClient()
 
@@ -237,13 +258,14 @@ export async function pullChanges(
   }
 
   await syncCalendarList(accountId, account.user_id)
+  await renew()
 
-  const { data: calendars, error: calError } = await supabase
+  const { data: calendars, error: calError } = await readAll(supabase
     .from('calendars')
     .select('id, google_calendar_id, sync_token, is_primary')
     .eq('google_account_id', accountId)
     .eq('is_active', true)
-    .order('is_primary', { ascending: false })
+    .order('is_primary', { ascending: false }).order('id'))
 
   if (calError || !calendars) {
     throw new Error('Failed to fetch calendars')
@@ -264,25 +286,29 @@ export async function pullChanges(
       cal.id,
       cal.google_calendar_id,
       account.user_id,
-      cal.sync_token
+      cal.sync_token,
+      renew,
     )
     totalCreated += result.created
     totalUpdated += result.updated
     totalDeleted += result.deleted
 
+    await renew()
     if (result.newSyncToken) {
-      await supabase
+      const { error } = await supabase
         .from('calendars')
         .update({ sync_token: result.newSyncToken, last_synced_at: new Date().toISOString() })
         .eq('id', cal.id)
+      if (error) throw new Error(`Failed to store sync cursor: ${error.message}`)
     }
   }
 
   if (complete) {
-    await supabase
+    const { error } = await supabase
       .from('google_accounts')
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', accountId)
+    if (error) throw new Error(`Failed to record account sync: ${error.message}`)
   }
 
   return { created: totalCreated, updated: totalUpdated, deleted: totalDeleted, complete }
@@ -296,7 +322,8 @@ async function syncCalendar(
   localCalendarId: string,
   googleCalendarId: string,
   userId: string,
-  syncToken: string | null
+  syncToken: string | null,
+  renew: () => Promise<void>,
 ): Promise<{
   created: number
   updated: number
@@ -339,6 +366,7 @@ async function syncCalendar(
       if (errorMessageIncludes(err, '410')) {
         needsFullSync = true
         currentSyncToken = null
+        pageToken = undefined
         const now = new Date()
         const timeMin = new Date(
           now.getTime() - 30 * 24 * 60 * 60 * 1000
@@ -358,9 +386,12 @@ async function syncCalendar(
 
   do {
     const page = await fetchPage()
+    await renew()
+    let renewedAt = Date.now()
     const events = page.items ?? []
 
     for (const googleEvent of events) {
+      if (Date.now() - renewedAt > 30_000) { await renew(); renewedAt = Date.now() }
       // Skip cancelled events in full sync — they're just noise
       if (
         googleEvent.status === 'cancelled' &&
@@ -402,12 +433,13 @@ async function addMasterException(
   const when = original.dateTime ?? (original.date ? `${original.date}T00:00:00Z` : null)
   if (!when) return
 
-  const { data: master } = await supabase
+  const { data: master, error: masterError } = await supabase
     .from('events')
     .select('id, recurrence_exceptions')
     .eq('calendar_id', calendarId)
     .eq('google_event_id', masterGoogleId)
     .maybeSingle()
+  if (masterError) throw new Error(`Failed to read recurring master: ${masterError.message}`)
   if (!master) return
 
   const iso = new Date(when).toISOString()
@@ -415,10 +447,11 @@ async function addMasterException(
     new Date(value).toISOString()
   )
   if (current.includes(iso)) return
-  await supabase
+  const { error } = await supabase
     .from('events')
     .update({ recurrence_exceptions: [...current, iso] })
     .eq('id', master.id)
+  if (error) throw new Error(`Failed to store recurring exception: ${error.message}`)
 }
 
 /**
@@ -432,16 +465,21 @@ async function upsertEvent(
   userId: string
 ): Promise<'created' | 'updated' | 'deleted'> {
   // A task we mirrored to this calendar. It stays a task and never becomes an event.
-  const taskResult = await applyIncomingTaskEvent(supabase, googleEvent, userId)
+  const taskResult = await applyIncomingTaskEvent(supabase, googleEvent, userId, calendarId)
   if (taskResult) return taskResult
 
   // Check if this event already exists locally
-  const { data: existing } = await supabase
+  const { data: existing, error: readError } = await supabase
     .from('events')
-    .select('id, etag, sync_status')
+    .select('id, etag, sync_status, updated_at')
     .eq('calendar_id', calendarId)
     .eq('google_event_id', googleEvent.id)
     .maybeSingle()
+
+  if (readError) throw new Error(`Failed to read synced event: ${readError.message}`)
+
+  // Pending local edits win over remote cancellation as well as updates.
+  if (existing?.sync_status === 'pending_push') return 'updated'
 
   // A changed or cancelled occurrence of a series: the master stops showing it.
   if (googleEvent.recurringEventId && googleEvent.originalStartTime) {
@@ -451,7 +489,8 @@ async function upsertEvent(
   // Cancelled event = delete locally
   if (googleEvent.status === 'cancelled') {
     if (existing) {
-      await supabase.from('events').delete().eq('id', existing.id)
+      const { error } = await supabase.from('events').delete().eq('id', existing.id).eq('updated_at', existing.updated_at).neq('sync_status', 'pending_push')
+      if (error) throw new Error(`Failed to delete synced event: ${error.message}`)
     }
     return 'deleted'
   }
@@ -470,24 +509,22 @@ async function upsertEvent(
       return 'updated' // No actual change, but counted for reporting
     }
 
-    await supabase
+    const { error } = await supabase
       .from('events')
       .update({
         ...mapped,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
+      .eq('updated_at', existing.updated_at)
+      .neq('sync_status', 'pending_push')
+    if (error) throw new Error(`Failed to update synced event: ${error.message}`)
     return 'updated'
   }
 
-  // Insert new event
-  await supabase.from('events').insert({
-    ...mapped,
-    id: crypto.randomUUID(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  })
-  return 'created'
+  const { data, error } = await supabase.rpc('insert_google_event_once', { p_event: mapped })
+  if (error) throw new Error(`Failed to insert synced event: ${error.message}`)
+  return data as 'created' | 'updated'
 }
 
 // ─── Push & Delete ───────────────────────────────────────────────────────────
@@ -499,18 +536,24 @@ async function upsertEvent(
  */
 export async function pushEvent(
   event: CalendarEvent,
-  calendar: Calendar
+  calendar: Calendar,
+  conferencing = Boolean(event.conferencing_url),
 ): Promise<CalendarEvent> {
   const { google_account_id: accountId, google_calendar_id: googleCalendarId } = calendar
   if (!accountId || !googleCalendarId) {
     throw new Error('Cannot push to a local calendar')
   }
   const supabase = getServiceClient()
+  const wasUnlinked = !event.google_event_id
+  const { data: prepared, error: prepareError } = await supabase.rpc('prepare_event_push', { p_id: event.id })
+  if (prepareError || !prepared) throw new Error(`Failed to prepare event push: ${prepareError?.message ?? 'event deleted'}`)
+  event = prepared as CalendarEvent
+  if (event.calendar_id !== calendar.id || !event.google_event_id) throw new Error('Event calendar changed before push')
   const googlePayload = mapLocalEventToGoogle(event)
 
   let googleResponse: GoogleEvent
 
-  if (event.google_event_id) {
+  if (event.google_event_id && !wasUnlinked) {
     // Update existing Google event
     try {
       googleResponse = await updateGoogleEventWithEtag(
@@ -531,51 +574,28 @@ export async function pushEvent(
           event,
           googlePayload
         )
+      } else if (status === 404 || errorMessageIncludes(err, '404')) {
+        googleResponse = await createGoogleEvent(accountId, googleCalendarId, { ...googlePayload, id: event.google_event_id }, conferencing)
       } else {
         throw err
       }
     }
   } else {
-    // Create new event on Google
-    googleResponse = await createGoogleEvent(
-      accountId,
-      googleCalendarId,
-      googlePayload,
-      Boolean(event.conferencing_url)
-    )
-  }
-
-  // Update local record with Google's response
-  const updatedFields: Partial<CalendarEvent> = {
-    google_event_id: googleResponse.id,
-    etag: googleResponse.etag,
-    sync_status: 'synced',
-    updated_at: new Date().toISOString(),
-  }
-
-  // If Google assigned a conferencing URL, capture it
-  if (googleResponse.conferenceData?.entryPoints) {
-    const videoEntry = googleResponse.conferenceData.entryPoints.find(
-      (ep) => ep.entryPointType === 'video'
-    )
-    if (videoEntry?.uri) {
-      updatedFields.conferencing_url = videoEntry.uri
+    // A stable ID makes concurrent creates and retries idempotent.
+    try {
+      googleResponse = await createGoogleEvent(accountId, googleCalendarId, { ...googlePayload, id: event.google_event_id as string }, conferencing)
+    } catch (error) {
+      if (!errorMessageIncludes(error, '409')) throw error
+      googleResponse = await updateGoogleEvent(accountId, googleCalendarId, event.google_event_id as string, googlePayload)
     }
-  } else if (googleResponse.hangoutLink) {
-    updatedFields.conferencing_url = googleResponse.hangoutLink
   }
 
-  const { data: updated, error } = await supabase
-    .from('events')
-    .update(updatedFields)
-    .eq('id', event.id)
-    .select()
-    .single()
-
-  if (error || !updated) {
-    throw new Error(`Failed to update local event after push: ${error?.message}`)
-  }
-
+  const conferencingUrl = googleResponse.conferenceData?.entryPoints?.find(point => point.entryPointType === 'video')?.uri ?? googleResponse.hangoutLink ?? null
+  const { data: updated, error } = await supabase.rpc('finish_event_push', {
+    p_event: event,
+    p_google: { id: googleResponse.id, etag: googleResponse.etag, conferencing_url: conferencingUrl },
+  })
+  if (error || !updated) throw new Error(`Failed to finish event push: ${error?.message ?? 'event deleted'}`)
   return updated as CalendarEvent
 }
 
@@ -750,7 +770,7 @@ export async function retryPendingPushEvents(
       await supabase
         .from('events')
         .update({ retry_count: retryCount, next_retry_at: nextRetryAt })
-        .eq('id', event.id)
+        .eq('id', event.id).eq('updated_at', event.updated_at).eq('sync_status', 'pending_push')
 
       if (retryCount >= MAX_PUSH_RETRIES) gaveUp++
       else failed++

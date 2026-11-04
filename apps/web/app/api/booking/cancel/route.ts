@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
   const { data: booking, error } = await supabase
     .from('bookings')
     .select(
-      'id, status, start_time, end_time, booker_name, booker_email, booker_notes, cancel_token, google_event_id, booking_links!inner(name, slug, location, timezone, user_id, google_account_id)'
+      'id, status, start_time, end_time, booker_name, booker_email, booker_notes, cancel_token, google_event_id, google_account_id, google_calendar_id, booking_links!inner(name, slug, location, timezone, user_id, google_account_id)'
     )
     .eq('cancel_token', token)
     .single()
@@ -134,15 +134,18 @@ export async function POST(request: NextRequest) {
     return htmlResponse(resultPage('Failed to cancel booking. Please try again.', true), 500)
   }
 
-  // Best-effort Google event deletion.
-  if (booking.google_event_id && link.google_account_id) {
+  // Immediate cleanup; the transaction also queues retry for new reservations.
+  const accountId = booking.google_account_id ?? link.google_account_id
+  if (booking.google_event_id && accountId) {
     try {
       const { getGoogleAccessToken, googleCalendarRequest } = await import('@/lib/google/calendar')
-      const accessToken = await getGoogleAccessToken(link.google_account_id)
-      const { data: calendar } = await supabase
+      const accessToken = await getGoogleAccessToken(accountId)
+      const { data: calendar } = booking.google_calendar_id
+        ? { data: { google_calendar_id: booking.google_calendar_id } }
+        : await supabase
         .from('calendars')
         .select('google_calendar_id')
-        .eq('google_account_id', link.google_account_id)
+        .eq('google_account_id', accountId)
         .eq('user_id', link.user_id)
         .limit(1)
         .single()

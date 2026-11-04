@@ -273,14 +273,7 @@ describe('middleware', () => {
       const request = createRequest('/login', 'app.poolendar.com')
       const response = await middleware(request)
 
-      // The middleware returns the pass-through response for /login since
-      // it's a public route. The redirect-from-login logic is only reached
-      // for non-public routes. Let's verify actual behavior:
-      // /login is public → early return. The second redirect check at line 62
-      // is unreachable when pathname === '/login'. This is actually a bug in
-      // the source (dead code), but we test the actual behavior.
-      // The response will be a pass-through, not a redirect.
-      expect(response.status).not.toBe(401)
+      expect(response.headers.get('location')).toBe('https://app.poolendar.com/')
     })
   })
 

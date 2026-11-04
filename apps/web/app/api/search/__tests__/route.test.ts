@@ -17,7 +17,10 @@ function createChain(result: MockResult = { data: null, error: null }) {
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
-  chain.then = (resolve: (v: MockResult) => void) => resolve(result)
+  let offset = 0
+  let end: number | undefined
+  chain.range = vi.fn((from: number, to: number) => { offset = from; end = to + 1; return chain })
+  chain.then = (resolve: (v: MockResult) => void) => resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data })
   chain[Symbol.toStringTag] = 'Promise'
   chain.single = vi.fn().mockReturnValue({
     ...chain,
@@ -140,7 +143,7 @@ describe('GET /api/search', () => {
       error: null,
     })
     // Tasks tag search
-    factory.setResult('tags', { data: [], error: null })
+    factory.setResult('tasks', { data: [], error: null })
     // Routines
     factory.setResult('routines', { data: [], error: null })
     // Booking links
@@ -171,7 +174,7 @@ describe('GET /api/search', () => {
       }],
       error: null,
     })
-    factory.setResult('tags', { data: [], error: null })
+    factory.setResult('tasks', { data: [], error: null })
     mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase: factory.build() })
 
     const { GET } = await import('../route')
@@ -180,6 +183,16 @@ describe('GET /api/search', () => {
 
     expect(res.status).toBe(200)
     expect(json.every((r: { type: string }) => r.type === 'task')).toBe(true)
+  })
+
+  it('keeps the documented unpaginated response when no limit is supplied', async () => {
+    const factory = createSupabaseMock()
+    factory.setResult('tasks', { data: Array.from({ length: 30 }, (_, i) => ({ id: `t-${i}`, title: 'Match', notes: null, due_date: null, created_at: '2030-01-01T00:00:00Z' })), error: null })
+    mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase: factory.build() })
+    const { GET } = await import('../route')
+    const response = await GET(makeSearchRequest('Match', '&types=task'))
+    expect(response.status).toBe(200)
+    expect((await response.json()).items).toHaveLength(30)
   })
 
   it('respects limit parameter (capped at 50)', async () => {
@@ -209,7 +222,7 @@ describe('GET /api/search', () => {
     factory.setResult('events', { data: [event], error: null })
     factory.setResult('events', { data: [event], error: null })
     factory.setResult('tasks', { data: [], error: null })
-    factory.setResult('tags', { data: [], error: null })
+    factory.setResult('tasks', { data: [], error: null })
     factory.setResult('routines', { data: [], error: null })
     factory.setResult('booking_links', { data: [], error: null })
     mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase: factory.build() })
@@ -235,7 +248,7 @@ describe('GET /api/search', () => {
     })
     factory.setResult('events', { data: [], error: null })
     factory.setResult('tasks', { data: [], error: null })
-    factory.setResult('tags', { data: [], error: null })
+    factory.setResult('tasks', { data: [], error: null })
     factory.setResult('routines', { data: [], error: null })
     factory.setResult('booking_links', { data: [], error: null })
     mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase: factory.build() })

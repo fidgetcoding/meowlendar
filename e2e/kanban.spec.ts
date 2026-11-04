@@ -62,10 +62,9 @@ test.describe('kanban board', () => {
     const input = page.getByPlaceholder(/task title/i)
     await input.fill(title)
 
-    // The create goes through supabase-js directly; wait for the actual insert
-    // to land before asserting, so a slow dev-server refetch can't flake this.
+    // Wait for the atomic task/tag transaction to commit before checking the card.
     const inserted = page.waitForResponse(
-      (r) => r.url().includes('/rest/v1/tasks') && r.request().method() === 'POST' && r.ok(),
+      (r) => r.url().includes('/rest/v1/rpc/create_task_with_children') && r.request().method() === 'POST' && r.ok(),
       { timeout: 15_000 }
     )
     await page.getByRole('button', { name: /^create$/i }).click()

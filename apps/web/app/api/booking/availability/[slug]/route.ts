@@ -1,3 +1,5 @@
+
+import { readAll } from '@/lib/read-all'
 // SERVICE ROLE: Required — public endpoint (no auth). External visitors query
 // availability by slug without logging in, so there is no user session.  The
 // service client bypasses RLS to read booking_links, profiles, bookings, and
@@ -21,7 +23,7 @@ import {
   type BusyBooking,
 } from '@/lib/booking/availability'
 import { getGoogleBusyPeriods } from '@/lib/google/freebusy'
-import { eventsInWindowFilter, expandOccurrences } from '@/lib/recurrence'
+import { eventsInWindowFilter, expandOccurrences, dateInZone } from '@/lib/recurrence'
 
 type RouteParams = { params: Promise<{ slug: string }> }
 
@@ -140,6 +142,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const timezone: string = timezoneParam ?? link.timezone
+  try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }) }
+  catch { return NextResponse.json({ error: 'Invalid timezone' }, { status: 400 }) }
   const durationMinutes: number = link.duration_minutes
   const availability: AvailabilityWindow[] = Array.isArray(link.availability) ? link.availability : []
 
@@ -149,10 +153,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   // --- Shared pool: every booking across ALL of the host's links ---
   // Fetch the host's links (id + their own buffer) so each booking is padded by
   // the buffer of the link it was made under.
-  const { data: hostLinks, error: linksError } = await supabase
+  const { data: hostLinks, error: linksError } = await readAll(supabase
     .from('booking_links')
     .select('id, buffer_minutes')
-    .eq('user_id', link.user_id)
+    .eq('user_id', link.user_id).order('id'))
 
   if (linksError || !hostLinks) {
     // Fail CLOSED — never advertise availability we couldn't verify.
@@ -162,26 +166,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const bufferByLink = new Map<string, number>(
     hostLinks.map((l) => [l.id as string, (l.buffer_minutes as number) ?? 0])
   )
-  const linkIds = hostLinks.map((l) => l.id as string)
+  const maxHostBufferMs = hostLinks.reduce((max, link) => Math.max(max, Number(link.buffer_minutes) || 0), 0) * 60_000
 
-  const { data: existingBookings, error: bookingsError } = await supabase
+  const { data: existingBookings, error: bookingsError } = await readAll(supabase
     .from('bookings')
-    .select('booking_link_id, start_time, end_time')
-    .in('booking_link_id', linkIds)
+    .select('booking_link_id, start_time, end_time, booking_links!inner(user_id)')
+    .eq('booking_links.user_id', link.user_id)
     .in('status', ['confirmed', 'pending'])
-    .lt('start_time', rangeEndUtc.toISOString())
-    .gt('end_time', rangeStartUtc.toISOString())
+    .lt('start_time', new Date(rangeEndUtc.getTime() + maxHostBufferMs + link.buffer_minutes * 60_000).toISOString())
+    .gt('end_time', new Date(rangeStartUtc.getTime() - maxHostBufferMs - link.buffer_minutes * 60_000).toISOString()).order('id'))
 
   if (bookingsError) {
     return NextResponse.json({ error: 'Availability temporarily unavailable' }, { status: 503 })
   }
 
-  const { data: existingEvents, error: eventsError } = await supabase
+  const { data: existingEvents, error: eventsError } = await readAll(supabase
     .from('events')
     .select('start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions')
     .eq('user_id', link.user_id)
     .neq('status', 'cancelled')
-    .or(eventsInWindowFilter(rangeStartUtc.toISOString(), rangeEndUtc.toISOString()))
+    .or(eventsInWindowFilter(new Date(rangeStartUtc.getTime() - link.buffer_minutes * 60_000).toISOString(), new Date(rangeEndUtc.getTime() + link.buffer_minutes * 60_000).toISOString())).order('id'))
 
   if (eventsError) {
     return NextResponse.json({ error: 'Availability temporarily unavailable' }, { status: 503 })
@@ -203,7 +207,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const blocked = computeBlockedIntervals({
     bookings,
     events: (existingEvents ?? []).flatMap((e) =>
-      expandOccurrences(e, rangeStartUtc, rangeEndUtc).map((o) => ({
+      expandOccurrences(e, new Date(rangeStartUtc.getTime() - link.buffer_minutes * 60_000), new Date(rangeEndUtc.getTime() + link.buffer_minutes * 60_000)).map((o) => ({
         start_time: o.start.toISOString(),
         end_time: o.end.toISOString(),
       })),
@@ -214,14 +218,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const allSlots = computeAvailableSlots({
     availability,
-    startDate,
-    endDate,
-    timezone,
+    startDate: dateInZone(rangeStartUtc, link.timezone),
+    endDate: dateInZone(new Date(rangeEndUtc.getTime() - 1), link.timezone),
+    timezone: link.timezone,
     durationMinutes,
     now: new Date(),
     minimumNoticeHours: link.minimum_notice_hours,
     blocked,
-  })
+  }).filter(slot => new Date(slot.start) >= rangeStartUtc && new Date(slot.start) < rangeEndUtc)
 
   if (dateParam) {
     return NextResponse.json({ slots: allSlots })

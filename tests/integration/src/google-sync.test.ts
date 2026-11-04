@@ -409,10 +409,10 @@ describe('the built-in scheduler', () => {
 
     // A second copy of the app with the scheduler on, every 2 seconds.
     const env = JSON.parse(readFileSync(process.env.MEOW_APP_ENV_FILE as string, 'utf8')) as NodeJS.ProcessEnv
-    second = spawn('pnpm', ['--filter', '@poolendar/web', 'exec', 'next', 'start', '-p', '3211'], {
+    second = spawn(process.execPath, [new URL('../../../apps/web/node_modules/next/dist/bin/next', import.meta.url).pathname, 'start', '-H', '127.0.0.1', '-p', '3211'], {
       env: { ...env, SCHEDULER_INTERVAL_SECONDS: '2' },
-      cwd: new URL('../../..', import.meta.url).pathname,
-      stdio: 'ignore',
+      cwd: new URL('../../../apps/web/', import.meta.url).pathname,
+      stdio: 'inherit',
     })
 
     await fakes('google/put-event', { email, calendarId: email, event: remoteEvent('auto', 'Arrived by itself') })

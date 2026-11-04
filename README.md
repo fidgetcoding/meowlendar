@@ -113,7 +113,7 @@ Why do some internals say `poolendar`? That's the old name. Renaming the rest is
 
 ## How I test it
 
-1,601 unit tests, 24 browser tests, and 137 integration tests against a real local Supabase and a production build, on every push. Google, Telegram, Resend and push are local fakes in those runs. Browser tests run headless and silent.
+The November 4 local maintenance pass verified 1,643 unit tests, 24 browser checks, and 150 integration tests against a fresh local Supabase and a production build. Google, Telegram, Resend and push are local fakes in those runs. Browser tests run headless and silent. The migrations and fixes remain local review changes until applied to an install; see [EVOLUTION.md](EVOLUTION.md).
 
 ## License
 

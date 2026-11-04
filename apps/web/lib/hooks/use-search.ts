@@ -116,7 +116,7 @@ export function useSearch(
           Promise.resolve(supabase
             .from('events')
             .select('id, title, notes, start_time, attendees')
-            .or(`attendees::text.ilike.${pattern}`)
+            .ilike('attendee_search_text', pattern)
             .limit(20)
             .then(({ data, error }) => {
               if (error) throw error

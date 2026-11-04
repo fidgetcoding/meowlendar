@@ -160,3 +160,14 @@ Trap to remember: without `E2E_BASE` set, the database specs skip themselves and
 - Specs: `specs/OVERHAUL.md`, `specs/PRODUCT.md`, `specs/TECH.md`, `DEPLOY.md`, `SECURITY.md`.
 - Migration: `supabase/migrations/015_security_hardening.sql`.
 - Private, kept by me: content note dated June 12, project notes dated July 3 and July 25. Setup and safety reports, November 1, 2026 (session notes).
+
+
+## 11. Local maintenance, November 4, 2026
+
+On the local `optimize/20261104-meowlendar` branch, based on `411c841`: booking reservations now serialize across one owner's links before Google creation, with durable cancellation cleanup. Task/tag and scoped recurrence writes are atomic. Ordinary event sync preserves newer local edits, coordinates incoming streams and cleans up moved/deleted remote targets. Ordered database paging prevents silent row-cap truncation; recurrence generation enforces bounds during iteration. Host booking hours and routine display/edit/completion retain their own timezone. Saved routine completion survives reload.
+
+Verification: 775 web tests plus 868 unchanged package tests (1,643 total); 150 integration tests on a fresh disposable Supabase through migration 041; 24 browser checks; production build, lint and types passed. Real database tests include concurrent reservations, rollback, cross-user rejection and 1,207-row fixtures. Browser checks retain real pointer interaction and the 30-second undo grace period. All external services are local fakes.
+
+The same recurrence fixture (50 daily series, 2,100 occurrences, Node 22, three samples) measured median 876.84 ms before and 138.61 ms after, about 84% lower elapsed time. This is an expansion benchmark, not a whole-app speed claim. A bounded formatter cache constructs one formatter cold and none warm instead of 4,500 per sample.
+
+No remote migration, deployment or push was performed. A low upstream deepmerge advisory remains without a listed patched version. Actual Google/hosted Supabase validation is still a separate live-integration step; existing freeBusy fallback and ambiguous DST-time policies were preserved.

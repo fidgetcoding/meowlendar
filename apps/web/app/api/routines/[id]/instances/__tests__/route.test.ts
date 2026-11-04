@@ -17,6 +17,7 @@ vi.mock('rrule', () => {
   return {
     RRule: {
       fromString: vi.fn().mockReturnValue({
+        options: { interval: 1, count: null },
         between: vi.fn().mockReturnValue([
           new Date('2026-06-16T00:00:00Z'),
           new Date('2026-06-18T00:00:00Z'),
@@ -50,10 +51,12 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   for (const m of methods) {
     builder[m] = vi.fn().mockReturnValue(builder)
   }
+  let offset = 0; let end = Infinity
+  builder.range = vi.fn((from: number, to: number) => { offset = from; end = to; return builder })
   builder.single = vi.fn().mockResolvedValue(result)
   builder.maybeSingle = vi.fn().mockResolvedValue(result)
   builder.then = (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
-    return Promise.resolve(result).then(resolve, reject)
+    return Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end + 1) : result.data }).then(resolve, reject)
   }
   return builder
 }
@@ -144,6 +147,7 @@ describe('GET /api/routines/:id/instances', () => {
 
     const { RRule } = await import('rrule')
     vi.mocked(RRule.fromString).mockReturnValueOnce({
+      options: { interval: 1, count: null },
       between: vi.fn().mockReturnValue([]),
     } as unknown as InstanceType<typeof RRule>)
 

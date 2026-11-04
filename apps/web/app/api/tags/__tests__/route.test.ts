@@ -17,7 +17,10 @@ function createChain(result: MockResult = { data: null, error: null }) {
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
-  chain.then = (resolve: (v: MockResult) => void) => resolve(result)
+  let offset = 0
+  let end: number | undefined
+  chain.range = (from: number, to: number) => { offset = from; end = to + 1; return chain }
+  chain.then = (resolve: (v: MockResult) => void) => resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data })
   chain[Symbol.toStringTag] = 'Promise'
   chain.single = vi.fn().mockReturnValue({
     ...chain,

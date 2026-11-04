@@ -25,17 +25,30 @@ vi.mock('../calendar', () => ({
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
 const mockSupabaseFrom = vi.fn()
+const mockSupabaseRpc = vi.fn()
+const fixtureEvents = new Map<string, CalendarEvent>()
+function filterable(value: unknown) {
+  const result = value as { data?: unknown; error?: unknown }
+  let offset = 0
+  let end: number | undefined
+  const query: Record<string, unknown> = {}
+  query.eq = query.neq = query.order = () => query
+  query.range = (from: number, to: number) => { offset = from; end = to + 1; return query }
+  query.then = (resolve: (value: unknown) => void) => Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data }).then(resolve)
+  return query
+}
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: vi.fn(() => ({
     from: (...args: unknown[]) => mockSupabaseFrom(...args),
+    rpc: (...args: unknown[]) => mockSupabaseRpc(...args),
   })),
 }))
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
-  return {
+  const event: CalendarEvent = {
     id: 'local-evt-1',
     user_id: 'user-1',
     calendar_id: 'cal-1',
@@ -62,6 +75,8 @@ function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
     updated_at: '2026-06-15T08:00:00Z',
     ...overrides,
   }
+  fixtureEvents.set(event.id, event)
+  return event
 }
 
 function makeCalendar(overrides: Partial<Calendar> = {}): Calendar {
@@ -94,6 +109,18 @@ describe('Google Calendar Sync', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.resetAllMocks()
+    fixtureEvents.clear()
+    mockSupabaseRpc.mockImplementation(async (name: string, args: { p_id: string; p_event: CalendarEvent; p_google: Record<string, unknown> }) => {
+      if (name === 'claim_account_sync') return { data: 'fixture-lock', error: null }
+      if (name === 'renew_account_sync' || name === 'release_account_sync') return { data: true, error: null }
+      if (name === 'prepare_event_push') {
+        const event = fixtureEvents.get(args.p_id)
+        return { data: event ? { ...event, google_event_id: event.google_event_id ?? 'mefixture' } : null, error: null }
+      }
+      if (name === 'finish_event_push') return mockSupabaseFrom('events').update({ ...args.p_google, google_event_id: args.p_google.id, sync_status: 'synced' }).eq('id', args.p_event.id).select().single()
+      const result = await mockSupabaseFrom('events').insert(args.p_event)
+      return { ...result, data: result.error ? null : 'created' }
+    })
     ;(globalThis.fetch as Mock).mockReset()
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
@@ -581,10 +608,10 @@ describe('Google Calendar Sync', () => {
       const mockAccountSelect = vi.fn().mockReturnValue({ eq: mockAccountEq })
 
       // Mock calendars lookup
-      const mockCalOrder = vi.fn().mockResolvedValue({
+      const mockCalOrder = vi.fn().mockReturnValue(filterable({
         data: [{ id: 'cal-1', google_calendar_id: 'primary' }],
         error: null,
-      })
+      }))
       const mockCalEq2 = vi.fn().mockReturnValue({ order: mockCalOrder })
       const mockCalEq1 = vi.fn().mockReturnValue({ eq: mockCalEq2 })
       const mockCalSelect = vi.fn().mockReturnValue({ eq: mockCalEq1 })
@@ -596,10 +623,10 @@ describe('Google Calendar Sync', () => {
       const mockEvtSelect = vi.fn().mockReturnValue({ eq: mockEvtEqCal })
 
       // Mock event insert
-      const mockEvtInsert = vi.fn().mockResolvedValue({ error: null })
+      const mockEvtInsert = vi.fn().mockReturnValue(filterable({ error: null }))
 
       // Mock sync token update
-      const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
+      const mockUpdateEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const mockUpdateFn = vi.fn().mockReturnValue({ eq: mockUpdateEq })
 
       let fromCallCount = 0
@@ -610,7 +637,7 @@ describe('Google Calendar Sync', () => {
           return { update: mockUpdateFn }
         }
         if (table === 'calendars') {
-          return { select: mockCalSelect, update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }
+          return { select: mockCalSelect, update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue(filterable({ error: null })) }) }
         }
         if (table === 'events') {
           return { select: mockEvtSelect, insert: mockEvtInsert }
@@ -648,10 +675,10 @@ describe('Google Calendar Sync', () => {
       const mockAccountEq = vi.fn().mockReturnValue({ single: mockAccountSingle })
       const mockAccountSelect = vi.fn().mockReturnValue({ eq: mockAccountEq })
 
-      const mockCalOrder = vi.fn().mockResolvedValue({
+      const mockCalOrder = vi.fn().mockReturnValue(filterable({
         data: [{ id: 'cal-1', google_calendar_id: 'primary', sync_token: 'existing-token' }],
         error: null,
-      })
+      }))
       const mockCalEq2 = vi.fn().mockReturnValue({ order: mockCalOrder })
       const mockCalEq1 = vi.fn().mockReturnValue({ eq: mockCalEq2 })
       const mockCalSelect = vi.fn().mockReturnValue({ eq: mockCalEq1 })
@@ -666,11 +693,11 @@ describe('Google Calendar Sync', () => {
       const mockEvtSelect = vi.fn().mockReturnValue({ eq: mockEvtEqCal })
 
       // Delete mock
-      const mockDeleteEq = vi.fn().mockResolvedValue({ error: null })
+      const mockDeleteEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const mockEvtDelete = vi.fn().mockReturnValue({ eq: mockDeleteEq })
 
       // Sync token update
-      const mockUpdateEq = vi.fn().mockResolvedValue({ error: null })
+      const mockUpdateEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const mockUpdateFn = vi.fn().mockReturnValue({ eq: mockUpdateEq })
 
       let fromCallCount = 0
@@ -681,7 +708,7 @@ describe('Google Calendar Sync', () => {
           return { update: mockUpdateFn }
         }
         if (table === 'calendars') {
-          return { select: mockCalSelect, update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) }
+          return { select: mockCalSelect, update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue(filterable({ error: null })) }) }
         }
         if (table === 'events') {
           return { select: mockEvtSelect, delete: mockEvtDelete }
@@ -747,7 +774,7 @@ describe('Google Calendar Sync', () => {
       const event = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 0 }
       mockCreateGoogleEvent.mockRejectedValue(new Error('google down'))
 
-      const updateEq = vi.fn().mockResolvedValue({ error: null })
+      const updateEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const updateFn = vi.fn().mockReturnValue({ eq: updateEq })
       wireEvents([event], updateFn, makeCalendar())
 
@@ -763,7 +790,7 @@ describe('Google Calendar Sync', () => {
       const event = { ...makeEvent({ id: 'evt-strand', google_event_id: null }), retry_count: 4 }
       mockCreateGoogleEvent.mockRejectedValue(new Error('still down'))
 
-      const updateEq = vi.fn().mockResolvedValue({ error: null })
+      const updateEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const updateFn = vi.fn().mockReturnValue({ eq: updateEq })
       wireEvents([event], updateFn, makeCalendar())
 
@@ -795,7 +822,7 @@ describe('Google Calendar Sync', () => {
     it('gives up immediately when the owning calendar is gone', async () => {
       const event = { ...makeEvent({ id: 'evt-orphan', google_event_id: null }), retry_count: 0 }
 
-      const updateEq = vi.fn().mockResolvedValue({ error: null })
+      const updateEq = vi.fn().mockReturnValue(filterable({ error: null }))
       const updateFn = vi.fn().mockReturnValue({ eq: updateEq })
       wireEvents([event], updateFn, null) // calendar lookup returns null
 

@@ -103,12 +103,14 @@ test.describe('routines, no Google', () => {
   })
 
   test('a daily routine shows on each day and can be completed', async ({ page }) => {
+    test.setTimeout(60_000) // Completion preserves the 30-second undo grace period.
     await signUp(page)
     const res = await page.request.post('/api/routines', {
       data: {
         title: 'Morning walk',
-        start_time: '09:00',
-        end_time: '09:30',
+        // 09:00 in the browser's New York zone, inside the visible grid hours.
+        start_time: '14:00',
+        end_time: '14:30',
         timezone: 'UTC',
         recurrence_rule: 'FREQ=DAILY',
       },
@@ -122,10 +124,16 @@ test.describe('routines, no Google', () => {
     const shown = await routine.count()
     expect(shown).toBeGreaterThanOrEqual(1)
 
-    await routine.first().dispatchEvent('click')
-    await page.getByRole('button', { name: /complete|done/i }).first().click()
-    await page.waitForLoadState('networkidle')
-    const instances = await page.request.get('/api/routines')
-    expect(instances.ok()).toBe(true)
+    const instanceId = await routine.first().getAttribute('data-item-id')
+    const hostDate = instanceId!.slice(-10)
+    await routine.first().evaluate(element => element.scrollIntoView({ block: 'center' }))
+    const saved = page.waitForResponse(response => response.url().includes('/rest/v1/routine_instances') && response.request().method() === 'POST', { timeout: 45_000 })
+    await routine.first().getByRole('button', { name: 'Complete routine', exact: true }).click()
+    const response = await saved
+    expect(response.ok()).toBe(true)
+    expect(await response.json()).toMatchObject({ date: hostDate, status: 'completed' })
+    await page.reload()
+    const completed = page.locator(`[data-item-id="${instanceId}"]`)
+    await expect(completed.getByRole('button', { name: 'Uncheck routine', exact: true })).toBeAttached()
   })
 })

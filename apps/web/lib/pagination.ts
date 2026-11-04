@@ -6,13 +6,10 @@
 // and `next_cursor` is null — backward-compatible content in the enveloped
 // shape.
 //
-// The slice is done in memory after the endpoint's own (already-ordered) query.
-// This is a deliberate, scale-appropriate choice: Poolendar is a personal app
-// for ~10 users (PRODUCT.md non-goal: scale), where list sizes are small and
-// keyset SQL across each endpoint's differing sort keys would add complexity
-// for no real benefit. The cursor is the stable key of the last returned item,
-// so pagination survives inserts (we resume *after* that key); if the cursored
-// row was deleted, we restart from the top rather than error.
+// Endpoints read complete, stably ordered server pages before merging/filtering.
+// This helper retains the existing public cursor semantics over those results.
+// The cursor is the stable key of the last returned item; a deleted cursor row
+// restarts from the top, as before.
 // ---------------------------------------------------------------------------
 
 export const MAX_PAGE_LIMIT = 100

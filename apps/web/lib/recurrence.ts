@@ -36,15 +36,24 @@ export function isValidRecurrenceRule(rule: string): boolean {
   if (rule.length > 1000) return false
   try {
     const options = RRule.parseString(ruleText(rule))
-    return options.freq !== undefined
+    if (options.freq === undefined) return false
+    if (options.interval != null && (!Number.isInteger(options.interval) || options.interval <= 0)) return false
+    if (options.count != null && (!Number.isInteger(options.count) || options.count <= 0)) return false
+    // Construction validates fields such as frequency and BYSETPOS without iterating.
+    new RRule(options)
+    return true
   } catch {
     return false
   }
 }
 
-/** The instant's wall clock in `timeZone`, expressed as if it were UTC. */
-function toWallClock(date: Date, timeZone: string): Date {
-  const parts = new Intl.DateTimeFormat('en-US', {
+// A visible month expands many occurrences in the same few zones. Reuse the
+// expensive Intl formatter, with a bound for long-running server processes.
+const formatters = new Map<string, Intl.DateTimeFormat>()
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  const cached = formatters.get(timeZone)
+  if (cached) return cached
+  const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hourCycle: 'h23',
     year: 'numeric',
@@ -53,7 +62,15 @@ function toWallClock(date: Date, timeZone: string): Date {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).formatToParts(date)
+  })
+  if (formatters.size >= 64) formatters.delete(formatters.keys().next().value!)
+  formatters.set(timeZone, formatter)
+  return formatter
+}
+
+/** The instant's wall clock in `timeZone`, expressed as if it were UTC. */
+function toWallClock(date: Date, timeZone: string): Date {
+  const parts = formatterFor(timeZone).formatToParts(date)
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
   return new Date(
     Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')),
@@ -70,7 +87,7 @@ function fromWallClock(wall: Date, timeZone: string): Date {
 function safeZone(timeZone: string | null | undefined, allDay: boolean): string {
   if (allDay || !timeZone) return 'UTC'
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone })
+    formatterFor(timeZone)
     return timeZone
   } catch {
     return 'UTC'
@@ -107,13 +124,14 @@ export function expandOccurrences(
   const wallTo = new Date(toWallClock(windowEnd, zone).getTime() + DAY_MS)
 
   const occurrences: Occurrence[] = []
-  for (const wall of rule.between(wallFrom, wallTo, true)) {
+  // Stop RRule's iterator before it allocates the entire candidate window.
+  rule.between(wallFrom, wallTo, true, (wall) => {
     const s = fromWallClock(wall, zone)
-    if (skipped.has(s.getTime())) continue
+    if (skipped.has(s.getTime())) return true
     const e = new Date(s.getTime() + durationMs)
     if (overlaps(s, e)) occurrences.push({ start: s, end: e })
-    if (occurrences.length >= MAX_OCCURRENCES_PER_WINDOW) break
-  }
+    return occurrences.length < MAX_OCCURRENCES_PER_WINDOW
+  })
   return occurrences
 }
 
@@ -127,6 +145,11 @@ export function wallClockToInstant(date: string, time: string, timeZone: string)
 /** The YYYY-MM-DD date of an instant in `timeZone`. */
 export function dateInZone(instant: Date, timeZone: string): string {
   return toWallClock(instant, safeZone(timeZone, false)).toISOString().slice(0, 10)
+}
+
+/** The HH:mm wall-clock time to persist for a routine in its own zone. */
+export function timeInZone(instant: Date, timeZone: string): string {
+  return toWallClock(instant, safeZone(timeZone, false)).toISOString().slice(11, 16)
 }
 
 /**

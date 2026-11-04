@@ -1,3 +1,6 @@
+
+import { readAll } from '@/lib/read-all'
+import { omit } from '@/lib/omit'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
 import { createTaskSchema } from '@poolendar/validators'
@@ -23,27 +26,10 @@ export async function GET(request: NextRequest) {
   const dueTo = searchParams.get('due_to')
   const tagId = searchParams.get('tag_id')
 
-  // Optional tag filter: resolve the tag's task ids first (RLS-scoped), then
-  // constrain the task query. An empty result short-circuits to an empty page.
-  let tagTaskIds: string[] | null = null
-  if (tagId) {
-    const { data: tagRows, error: tagErr } = await supabase
-      .from('task_tags')
-      .select('task_id')
-      .eq('tag_id', tagId)
-    if (tagErr) {
-      return NextResponse.json({ error: 'Failed to filter by tag' }, { status: 500 })
-    }
-    tagTaskIds = (tagRows ?? []).map((r) => r.task_id)
-    if (tagTaskIds.length === 0) {
-      return NextResponse.json(paginate([], searchParams))
-    }
-  }
-
-  let query = supabase
-    .from('tasks')
-    .select('*')
-    .eq('user_id', userId)
+  const taskQuery = tagId
+    ? supabase.from('tasks').select('*, task_tags(tag_id, tags(id, name, color, prefix)), matching_tags:task_tags!inner(tag_id)')
+    : supabase.from('tasks').select('*, task_tags(tag_id, tags(id, name, color, prefix))')
+  let query = taskQuery.eq('user_id', userId)
     .order('position', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
 
@@ -68,9 +54,9 @@ export async function GET(request: NextRequest) {
   if (dueFrom) query = query.gte('due_date', dueFrom)
   if (dueTo) query = query.lte('due_date', dueTo)
 
-  if (tagTaskIds) query = query.in('id', tagTaskIds)
+  if (tagId) query = query.eq('matching_tags.tag_id', tagId)
 
-  const { data: tasks, error } = await query
+  const { data: tasks, error } = await readAll(query.order('id'))
 
   if (error) {
     return NextResponse.json(
@@ -79,35 +65,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  if (tasks.length === 0) {
+  if (!tasks?.length) {
     return NextResponse.json(paginate([], searchParams))
   }
 
-  const taskIds = tasks.map((t) => t.id)
-
-  const { data: taskTags, error: tagsError } = await supabase
-    .from('task_tags')
-    .select('task_id, tag_id, tags(id, name, color, prefix)')
-    .in('task_id', taskIds)
-
-  if (tagsError) {
-    return NextResponse.json(
-      { error: 'Failed to fetch task tags' },
-      { status: 500 }
-    )
-  }
-
-  const tagsByTaskId: Record<string, unknown[]> = {}
-  for (const tt of taskTags ?? []) {
-    if (!tagsByTaskId[tt.task_id]) {
-      tagsByTaskId[tt.task_id] = []
-    }
-    tagsByTaskId[tt.task_id]!.push(tt.tags)
-  }
-
-  const tasksWithTags = tasks.map((task) => ({
-    ...task,
-    tags: tagsByTaskId[task.id] ?? [],
+  const tasksWithTags = tasks.map(({ task_tags, ...task }) => ({
+    ...omit(task, ['matching_tags']),
+    tags: (task_tags ?? []).map((row: { tags: unknown }) => row.tags),
   }))
 
   return NextResponse.json(paginate(tasksWithTags, searchParams))

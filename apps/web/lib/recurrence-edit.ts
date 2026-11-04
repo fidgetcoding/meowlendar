@@ -9,6 +9,7 @@ import { ruleEndingBefore, ruleWithoutCount } from './recurrence'
 export type RecurrenceScope = 'single' | 'future' | 'all' | 'custom'
 
 interface SeriesRow {
+  updated_at: string
   id: string
   user_id: string
   calendar_id: string
@@ -59,166 +60,76 @@ function durationMs(master: SeriesRow): number {
   return new Date(master.end_time).getTime() - new Date(master.start_time).getTime()
 }
 
-async function addExceptions(
-  supabase: SupabaseClient,
-  master: SeriesRow,
-  occurrences: string[],
-): Promise<void> {
-  const merged = [
-    ...new Set([
-      ...(master.recurrence_exceptions ?? []).map((iso) => new Date(iso).toISOString()),
-      ...occurrences.map((iso) => new Date(iso).toISOString()),
-    ]),
-  ]
-  const { error } = await supabase
-    .from('events')
-    .update({ recurrence_exceptions: merged, sync_status: 'pending_push' })
-    .eq('id', master.id)
-  if (error) throw new Error('Failed to update the series')
-  master.recurrence_exceptions = merged
+function exceptions(master: SeriesRow, dates: string[]) {
+  return [...new Set([...(master.recurrence_exceptions ?? []), ...dates].map(iso => new Date(iso).toISOString()))]
 }
 
-/** Pulls one occurrence out of the series as its own event, with `patch` applied. */
-async function detachOccurrence(
-  supabase: SupabaseClient,
-  master: SeriesRow,
-  occurrenceStart: string,
-  patch: Patch,
-): Promise<unknown> {
-  await addExceptions(supabase, master, [occurrenceStart])
-  const start = new Date(occurrenceStart)
-  const { data, error } = await supabase
-    .from('events')
-    .insert({
-      ...copyOf(master),
-      start_time: start.toISOString(),
-      end_time: new Date(start.getTime() + durationMs(master)).toISOString(),
-      recurrence_rule: null,
-      recurrence_id: master.id,
-      sync_status: 'pending_push',
-      ...patch,
-    })
-    .select()
-    .single()
-  if (error) throw new Error('Failed to create the changed occurrence')
+async function mutate(supabase: SupabaseClient, master: SeriesRow, patch: Patch, inserts: Patch[] = [], remove = false) {
+  const { data, error } = await supabase.rpc('mutate_event_series', {
+    p_id: master.id, p_expected_updated_at: master.updated_at,
+    p_patch: patch, p_inserts: inserts, p_delete: remove,
+  })
+  if (error) throw Object.assign(new Error(error.message), { code: error.code })
   return data
 }
 
-/** Ends the series before `occurrenceStart` and continues it as a new one. */
-async function splitSeries(
-  supabase: SupabaseClient,
-  master: SeriesRow,
-  occurrenceStart: string,
-  patch: Patch,
-): Promise<unknown> {
-  const start = new Date(occurrenceStart)
-  const rule = master.recurrence_rule as string
-
-  const { data, error } = await supabase
-    .from('events')
-    .insert({
-      ...copyOf(master),
-      start_time: start.toISOString(),
-      end_time: new Date(start.getTime() + durationMs(master)).toISOString(),
-      recurrence_rule: ruleWithoutCount(rule),
-      recurrence_exceptions: (master.recurrence_exceptions ?? []).filter(
-        (iso) => new Date(iso) > start,
-      ),
-      sync_status: 'pending_push',
-      ...patch,
-    })
-    .select()
-    .single()
-  if (error) throw new Error('Failed to create the new series')
-
-  await endSeries(supabase, master, start)
-  return data
-}
-
-async function endSeries(supabase: SupabaseClient, master: SeriesRow, before: Date): Promise<void> {
-  const { error } = await supabase
-    .from('events')
-    .update({
-      recurrence_rule: ruleEndingBefore(master.recurrence_rule as string, before),
-      sync_status: 'pending_push',
-    })
-    .eq('id', master.id)
-  if (error) throw new Error('Failed to shorten the series')
-}
-
-/**
- * Applies `patch` to part of a series. `patch` holds the new values, with any
- * start and end given for the occurrence being edited.
- */
 export async function applyScopedEdit(
-  supabase: SupabaseClient,
-  master: SeriesRow,
+  supabase: SupabaseClient, master: SeriesRow,
   options: { scope: RecurrenceScope; occurrenceStart?: string; dates?: string[]; patch: Patch },
 ): Promise<unknown> {
   const { scope, occurrenceStart, dates, patch } = options
-
-  if (scope === 'single') {
-    return detachOccurrence(supabase, master, occurrenceStart as string, patch)
+  if (scope === 'single' || scope === 'custom') {
+    const selected = [...new Set(scope === 'single' ? [occurrenceStart as string] : dates ?? [])]
+    const inserts = selected.map(date => ({
+      ...copyOf(master), start_time: new Date(date).toISOString(),
+      end_time: new Date(new Date(date).getTime() + durationMs(master)).toISOString(),
+      recurrence_rule: null, recurrence_id: master.id,
+      ...(scope === 'custom' ? omit(patch, ['start_time', 'end_time']) : patch),
+    }))
+    return mutate(supabase, master, { recurrence_exceptions: exceptions(master, selected) }, inserts)
   }
   if (scope === 'future') {
-    return splitSeries(supabase, master, occurrenceStart as string, patch)
+    const start = new Date(occurrenceStart as string)
+    return mutate(supabase, master, {
+      recurrence_rule: ruleEndingBefore(master.recurrence_rule as string, start),
+    }, [{
+      ...copyOf(master), start_time: start.toISOString(),
+      end_time: new Date(start.getTime() + durationMs(master)).toISOString(),
+      recurrence_rule: ruleWithoutCount(master.recurrence_rule as string),
+      recurrence_exceptions: (master.recurrence_exceptions ?? []).filter(iso => new Date(iso) > start),
+      ...patch,
+    }])
   }
-  if (scope === 'custom') {
-    let last: unknown = null
-    for (const date of dates ?? []) {
-      // New times only make sense for one occurrence, so a set keeps its own.
-      last = await detachOccurrence(supabase, master, date, omit(patch, ['start_time', 'end_time']))
-    }
-    return last
-  }
-
-  // scope 'all': new times given for one occurrence shift the whole series.
-  const update: Patch = { ...patch, sync_status: 'pending_push' }
+  const update: Patch = { ...patch }
   if (occurrenceStart && typeof patch.start_time === 'string') {
     const delta = new Date(patch.start_time).getTime() - new Date(occurrenceStart).getTime()
     const newStart = new Date(new Date(master.start_time).getTime() + delta)
-    const length =
-      typeof patch.end_time === 'string'
-        ? new Date(patch.end_time).getTime() - new Date(patch.start_time).getTime()
-        : durationMs(master)
+    const length = typeof patch.end_time === 'string'
+      ? new Date(patch.end_time).getTime() - new Date(patch.start_time).getTime() : durationMs(master)
     update.start_time = newStart.toISOString()
     update.end_time = new Date(newStart.getTime() + length).toISOString()
-    // Exceptions are pinned to old start times, so they move with the series.
-    update.recurrence_exceptions = (master.recurrence_exceptions ?? []).map((iso) =>
-      new Date(new Date(iso).getTime() + delta).toISOString(),
-    )
+    update.recurrence_exceptions = (master.recurrence_exceptions ?? []).map(iso => new Date(new Date(iso).getTime() + delta).toISOString())
   }
-  const { data, error } = await supabase
-    .from('events')
-    .update(update)
-    .eq('id', master.id)
-    .select()
-    .single()
-  if (error) throw new Error('Failed to update the series')
-  return data
+  return mutate(supabase, master, update)
 }
 
-/** Removes part of a series. Returns true when the whole master row should go too. */
 export async function applyScopedDelete(
-  supabase: SupabaseClient,
-  master: SeriesRow,
+  supabase: SupabaseClient, master: SeriesRow,
   options: { scope: RecurrenceScope; occurrenceStart?: string; dates?: string[] },
 ): Promise<{ deleteMaster: boolean }> {
   const { scope, occurrenceStart, dates } = options
-  if (scope === 'single') {
-    await addExceptions(supabase, master, [occurrenceStart as string])
+  if (scope === 'single' || scope === 'custom') {
+    await mutate(supabase, master, { recurrence_exceptions: exceptions(master, scope === 'single' ? [occurrenceStart as string] : dates ?? []) })
     return { deleteMaster: false }
   }
-  if (scope === 'custom') {
-    await addExceptions(supabase, master, dates ?? [])
-    return { deleteMaster: false }
-  }
-  if (scope === 'future') {
-    const before = new Date(occurrenceStart as string)
-    // Deleting from the first occurrence on leaves nothing of the series.
-    if (before.getTime() <= new Date(master.start_time).getTime()) return { deleteMaster: true }
-    await endSeries(supabase, master, before)
+  if (scope === 'future' && new Date(occurrenceStart as string) > new Date(master.start_time)) {
+    await mutate(supabase, master, { recurrence_rule: ruleEndingBefore(master.recurrence_rule as string, new Date(occurrenceStart as string)) })
     return { deleteMaster: false }
   }
   return { deleteMaster: true }
+}
+
+/** Delete a master and all detached rows atomically; DB tombstones retain Google cleanup. */
+export async function deleteEventSeries(supabase: SupabaseClient, master: SeriesRow): Promise<void> {
+  await mutate(supabase, master, {}, [], true)
 }

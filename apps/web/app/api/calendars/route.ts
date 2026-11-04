@@ -1,3 +1,5 @@
+
+import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { authenticate, isAuthError, validationError } from '@/lib/auth/helpers'
@@ -68,11 +70,11 @@ export async function GET(request: NextRequest) {
 
   const { userId, supabase } = auth
 
-  const { data: accounts, error: accountsError } = await supabase
+  const { data: accounts, error: accountsError } = await readAll(supabase
     .from('google_accounts')
     .select('id, email, token_expires_at, sync_token, last_synced_at, created_at')
     .eq('user_id', userId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: true }).order('id'))
 
   if (accountsError) {
     return NextResponse.json(
@@ -81,11 +83,11 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { data: calendars, error: calendarsError } = await supabase
+  const { data: calendars, error: calendarsError } = await readAll(supabase
     .from('calendars')
     .select('*')
     .eq('user_id', userId)
-    .order('is_primary', { ascending: false })
+    .order('is_primary', { ascending: false }).order('id'))
 
   if (calendarsError) {
     return NextResponse.json(

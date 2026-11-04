@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../../../lib/auth/helpers'
 import { RRule } from 'rrule'
+import { readAll } from '@/lib/read-all'
 
 export async function GET(
   request: NextRequest,
@@ -49,13 +50,13 @@ export async function GET(
   }
 
   // Fetch existing instance rows for this date range
-  const { data: existingInstances, error: instancesError } = await supabase
+  const { data: existingInstances, error: instancesError } = await readAll(supabase
     .from('routine_instances')
     .select('*')
     .eq('routine_id', routineId)
     .gte('date', start)
     .lte('date', end)
-    .order('date', { ascending: true })
+    .order('date', { ascending: true }).order('id'))
 
   if (instancesError) {
     return NextResponse.json(
@@ -73,6 +74,9 @@ export async function GET(
   let rrule: RRule
   try {
     rrule = RRule.fromString(routine.recurrence_rule)
+    if (rrule.options.interval <= 0 || (rrule.options.count !== null && rrule.options.count <= 0)) {
+      throw new Error('Invalid recurrence interval/count')
+    }
   } catch {
     return NextResponse.json(
       { error: 'Invalid recurrence rule on routine' },
@@ -80,7 +84,16 @@ export async function GET(
     )
   }
 
-  const occurrences = rrule.between(startDate, endDate, true)
+  // Bound work before RRule materializes the entire requested window. Report
+  // overflow rather than returning an apparently complete, truncated response.
+  let overflow = false
+  const occurrences = rrule.between(startDate, endDate, true, (_date, index) => {
+    if (index >= 10000) { overflow = true; return false }
+    return true
+  })
+  if (overflow) {
+    return NextResponse.json({ error: 'Too many routine occurrences; request a smaller date range.' }, { status: 400 })
+  }
 
   // Generate pending instances for dates that match the rrule but have no row
   const generatedInstances = occurrences

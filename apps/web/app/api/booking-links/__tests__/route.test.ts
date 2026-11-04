@@ -18,7 +18,10 @@ function createChain(result: MockResult = { data: null, error: null }) {
     chain[m] = vi.fn().mockReturnValue(chain)
   }
   // Terminal — resolves to result
-  chain.then = (resolve: (v: MockResult) => void) => resolve(result)
+  let offset = 0
+  let end: number | undefined
+  chain.range = (from: number, to: number) => { offset = from; end = to + 1; return chain }
+  chain.then = (resolve: (v: MockResult) => void) => resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data })
   // Allow await on the chain itself
   chain[Symbol.toStringTag] = 'Promise'
   // Override single/select to also be thenable

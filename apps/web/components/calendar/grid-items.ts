@@ -1,9 +1,14 @@
-import { format, parseISO, setHours, setMinutes } from 'date-fns'
-import type { CalendarEvent, Task, Routine, Calendar } from '@poolendar/types'
+import { format, parseISO, startOfDay, endOfDay } from 'date-fns'
+import type { CalendarEvent, Task, Routine, RoutineInstance, Calendar } from '@poolendar/types'
 import type { CalendarItemData } from './calendar-types'
-import { expandOccurrences, occurrenceItemId, routineOccursOn } from '@/lib/recurrence'
+import { expandOccurrences, occurrenceItemId, routineOccursOn, dateInZone, wallClockToInstant } from '@/lib/recurrence'
 
 const FALLBACK_COLOR = '#f9a825'
+
+// All-day timestamps encode calendar dates, not instants in the viewer's zone.
+function gridDate(iso: string, allDay: boolean): Date {
+  return parseISO(allDay ? iso.slice(0, 10) : iso)
+}
 
 /** Resolve a calendar item's color: explicit override, else its calendar. */
 export function getCalendarColor(
@@ -41,17 +46,19 @@ export function eventsToItems(
           {
             ...common,
             id: event.id,
-            startTime: parseISO(event.start_time),
-            endTime: parseISO(event.end_time),
+            startTime: gridDate(event.start_time, event.is_all_day),
+            endTime: gridDate(event.end_time, event.is_all_day),
           },
         ]
       }
       // One item per occurrence in view, each carrying which one it is in its id.
-      return expandOccurrences(event, window.start, window.end).map((occurrence) => ({
+      const start = event.is_all_day ? new Date(`${format(window.start, 'yyyy-MM-dd')}T00:00:00.000Z`) : window.start
+      const end = event.is_all_day ? new Date(`${format(window.end, 'yyyy-MM-dd')}T23:59:59.999Z`) : window.end
+      return expandOccurrences(event, start, end).map((occurrence) => ({
         ...common,
         id: occurrenceItemId(event.id, occurrence.start),
-        startTime: occurrence.start,
-        endTime: occurrence.end,
+        startTime: gridDate(occurrence.start.toISOString(), event.is_all_day),
+        endTime: gridDate(occurrence.end.toISOString(), event.is_all_day),
       }))
     })
 }
@@ -88,44 +95,26 @@ export function tasksToItems(
 export function routinesToItems(
   routines: Routine[],
   visibleDays: Date[],
-  calendars: Calendar[]
+  calendars: Calendar[],
+  instances: RoutineInstance[] = [],
 ): CalendarItemData[] {
   const items: CalendarItemData[] = []
+  const byDate = new Map(instances.map(instance => [`${instance.routine_id}-${instance.date}`, instance]))
 
   for (const routine of routines) {
-    const startParts = routine.start_time.split('T')
-    const endParts = routine.end_time.split('T')
-
-    // Routine times may be "HH:mm[:ss]" (Postgres time) or "...THH:mm".
-    const startTimePart = startParts.length > 1 ? startParts[1]! : startParts[0]!
-    const endTimePart = endParts.length > 1 ? endParts[1]! : endParts[0]!
-
-    let startHour = 9
-    let startMinute = 0
-    let endHour = 10
-    let endMinute = 0
-
-    const sParts = startTimePart.split(':')
-    if (sParts.length >= 2) {
-      startHour = parseInt(sParts[0] ?? '9', 10) || 0
-      startMinute = parseInt(sParts[1] ?? '0', 10) || 0
-    }
-    const eParts = endTimePart.split(':')
-    if (eParts.length >= 2) {
-      endHour = parseInt(eParts[0] ?? '10', 10) || 0
-      endMinute = parseInt(eParts[1] ?? '0', 10) || 0
-    }
-
-    for (const day of visibleDays) {
-      if (!routineOccursOn(routine.recurrence_rule, routine.created_at, format(day, 'yyyy-MM-dd'))) continue
-
-      const startTime = setMinutes(setHours(new Date(day), startHour), startMinute)
-      startTime.setSeconds(0, 0)
-      const endTime = setMinutes(setHours(new Date(day), endHour), endMinute)
-      endTime.setSeconds(0, 0)
+    const visibleDates = new Set(visibleDays.map(day => format(day, 'yyyy-MM-dd')))
+    const hostDates = new Set(visibleDays.flatMap(day => [
+      dateInZone(startOfDay(day), routine.timezone), dateInZone(endOfDay(day), routine.timezone),
+    ]))
+    for (const date of hostDates) {
+      const anchor = `${dateInZone(new Date(routine.created_at), routine.timezone)}T00:00:00Z`
+      if (!routineOccursOn(routine.recurrence_rule, anchor, date)) continue
+      const startTime = wallClockToInstant(date, routine.start_time.split('T').pop()!, routine.timezone)
+      const endTime = wallClockToInstant(date, routine.end_time.split('T').pop()!, routine.timezone)
+      if (!visibleDates.has(format(startTime, 'yyyy-MM-dd'))) continue
 
       items.push({
-        id: `${routine.id}-${format(day, 'yyyy-MM-dd')}`,
+        id: `${routine.id}-${date}`,
         type: 'routine',
         title: routine.title,
         startTime,
@@ -133,6 +122,7 @@ export function routinesToItems(
         color: getCalendarColor(calendars, routine.calendar_id, null),
         location: routine.location,
         routine,
+        routineInstanceStatus: byDate.get(`${routine.id}-${date}`)?.status,
       })
     }
   }

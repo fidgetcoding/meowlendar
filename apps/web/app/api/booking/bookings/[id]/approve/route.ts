@@ -57,28 +57,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     )
   }
 
-  const googleEventId = await createBookingGoogleEvent(supabase, link, {
-    booker_name: booking.booker_name,
-    booker_email: booking.booker_email,
-    booker_notes: booking.booker_notes,
-    start_time: booking.start_time,
-    end_time: booking.end_time,
-  })
-
   const { data: updated, error: updateError } = await supabase
     .from('bookings')
     .update({
       status: 'confirmed',
-      google_event_id: googleEventId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('status', 'pending')
     .select()
     .single()
 
   if (updateError || !updated) {
     return NextResponse.json({ error: 'Failed to approve booking' }, { status: 500 })
   }
+
+  updated.google_event_id = await createBookingGoogleEvent(supabase, link, updated)
 
   const bookingRecord: BookingRecord = {
     id: updated.id,

@@ -1,5 +1,8 @@
 'use client'
 
+import { readAll } from '@/lib/read-all'
+import { deleteEventSeries } from '@/lib/recurrence-edit'
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CalendarEvent } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
@@ -55,7 +58,7 @@ export function useEvents(start: string, end: string, calendarId?: string) {
         query = query.eq('calendar_id', calendarId)
       }
 
-      const { data, error } = await query
+      const { data, error } = await readAll(query.order('id'))
 
       if (error) throw error
       return data as CalendarEvent[]
@@ -277,8 +280,9 @@ export function useDeleteEvent() {
 
   return useMutation({
     mutationFn: async (id: string): Promise<void> => {
-      const { error } = await supabase.from('events').delete().eq('id', id)
+      const { data: event, error } = await supabase.from('events').select('*').eq('id', id).single()
       if (error) throw error
+      if (event) await deleteEventSeries(supabase, event)
     },
 
     onMutate: async (id) => {

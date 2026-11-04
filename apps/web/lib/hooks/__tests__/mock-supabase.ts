@@ -63,15 +63,18 @@ function dequeueResult(): MockResult {
 type MockQueryBuilder = PromiseLike<MockResult> & Record<string, unknown>
 
 function createQueryBuilder(): MockQueryBuilder {
+  let offset = 0
+  let end: number | undefined
   const builder: MockQueryBuilder = new Proxy(
     {} as MockQueryBuilder,
     {
       get(_target, prop) {
         // Make the builder thenable so `await supabase.from(...).select(...)` works
+        if (prop === 'range') return (from: number, to: number) => { offset = from; end = to + 1; return builder }
         if (prop === 'then') {
           return (resolve: (val: MockResult) => void) => {
             const result = dequeueResult()
-            return Promise.resolve(result).then(resolve)
+            return Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data }).then(resolve)
           }
         }
         // Any method call returns the builder itself for chaining
@@ -95,6 +98,7 @@ const mockAuth = {
  * `from()` returns a chainable query builder; auth.getUser() returns a user.
  */
 export const mockSupabaseClient = {
+  rpc: vi.fn(() => Promise.resolve(dequeueResult())),
   from: vi.fn(() => createQueryBuilder()),
   auth: mockAuth,
 }
@@ -105,6 +109,8 @@ export const mockSupabaseClient = {
 export function resetSupabaseMocks() {
   stickyResult = { data: null, error: null }
   resultQueue = []
+  mockSupabaseClient.rpc.mockReset()
+  mockSupabaseClient.rpc.mockImplementation(() => Promise.resolve(dequeueResult()))
   mockSupabaseClient.from.mockClear()
   mockSupabaseClient.from.mockImplementation(() => createQueryBuilder())
   mockAuth.getUser.mockClear()

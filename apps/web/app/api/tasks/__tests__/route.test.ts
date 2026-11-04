@@ -55,8 +55,11 @@ function makeQueryBuilder(result: { data: unknown; error: unknown }) {
   }
   builder.single = vi.fn().mockResolvedValue(result)
   builder.maybeSingle = vi.fn().mockResolvedValue(result)
+  let offset = 0
+  let end: number | undefined
+  builder.range = vi.fn((from: number, to: number) => { offset = from; end = to + 1; return builder })
   builder.then = (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
-    return Promise.resolve(result).then(resolve, reject)
+    return Promise.resolve({ ...result, data: Array.isArray(result.data) ? result.data.slice(offset, end) : result.data }).then(resolve, reject)
   }
   return builder
 }
@@ -100,8 +103,7 @@ describe('GET /api/tasks', () => {
     ]
 
     mockAuthWithTables({
-      tasks: { data: tasks, error: null },
-      task_tags: { data: taskTags, error: null },
+      tasks: { data: tasks.map(task => ({ ...task, task_tags: taskTags.filter(link => link.task_id === task.id) })), error: null },
     })
 
     const req = createRequest('GET', '/api/tasks')
