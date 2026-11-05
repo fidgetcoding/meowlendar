@@ -26,7 +26,7 @@ Use `localhost`, not `127.0.0.1`, in the browser. Sessions are per host and the 
 
 ## 2. Google Cloud setup
 
-One OAuth client covers both jobs: signing in (through Supabase) and connecting calendars (through the app). They are separate flows. You can sign in with email and still connect Google calendars.
+One OAuth client covers both jobs. Continue with Google requests sign-in and calendar access together and starts the first sync. You can also sign in with email and connect Google calendars separately, or add another Google account later. The server encrypts calendar tokens before storage and excludes Google tokens from the browser session.
 
 In the [Google Cloud console](https://console.cloud.google.com):
 

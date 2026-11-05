@@ -135,7 +135,7 @@ Finish by telling me which steps passed, which were skipped, and what is still r
        -- node /absolute/path/to/meowlendar/packages/mcp/dist/index.js
      ```
    - `claude mcp list` should say Connected. Ask for a task with a start and end time, and watch it land.
-7. **Add Google if you want it.** [DEPLOY.md](DEPLOY.md) has the clicks. The setup uses your own Google Cloud OAuth client; first sign-in offers calendar consent automatically.
+7. **Add Google if you want it.** [DEPLOY.md](DEPLOY.md) has the clicks. The setup uses your own Google Cloud OAuth client; Continue with Google requests calendar access in the same consent and starts syncing automatically.
 8. **Host it if you want.** DEPLOY.md covers hosted Supabase and Vercel, and I haven't run those yet either. Read [SECURITY.md](SECURITY.md) first.
 
 Why do some internals say `poolendar`? That's the old name. Renaming the rest isn't worth breaking things, so it stays.

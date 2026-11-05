@@ -5,6 +5,7 @@ import { encryptToken, decryptToken } from '../crypto'
 import { getGoogleAccessToken } from './calendar'
 import type { GoogleCalendarListEntry } from './types'
 import { googleApiBase, googleAuthUrl, googleRevokeUrl, googleTokenUrl } from '../external-urls'
+import { GOOGLE_CALENDAR_SCOPES } from './scopes'
 
 function getServiceClient() {
   return createServerClient(
@@ -19,13 +20,6 @@ function getServiceClient() {
   )
 }
 
-const GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.settings.readonly',
-  'https://www.googleapis.com/auth/userinfo.email',
-].join(' ')
-
 /**
  * Generate Google OAuth consent URL.
  * State param must be a pre-signed CSRF-safe string (userId.nonce.hmac).
@@ -38,7 +32,7 @@ export function getGoogleOAuthUrl(
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: GOOGLE_SCOPES,
+    scope: GOOGLE_CALENDAR_SCOPES,
     access_type: 'offline',
     // select_account: without it Google reuses the signed-in session, so a
     // second "Connect" can't reach a different account.
@@ -47,6 +41,18 @@ export function getGoogleOAuthUrl(
   })
 
   return `${googleAuthUrl()}?${params.toString()}`
+}
+
+/** Resolve the Google identity from the provider token, without logging it. */
+export async function getGoogleIdentity(accessToken: string): Promise<{ email: string; emailVerified: boolean }> {
+  const response = await fetch(`${googleApiBase()}/oauth2/v2/userinfo`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('Google identity verification failed')
+  const info = await response.json() as { email?: unknown; verified_email?: unknown }
+  if (typeof info.email !== 'string') throw new Error('Google identity has no email')
+  return { email: info.email, emailVerified: info.verified_email === true }
 }
 
 /**

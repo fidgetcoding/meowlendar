@@ -236,7 +236,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.searchParams.get('google_sync') !== 'failed') return
-    toast.error("Google connected, but calendar sync failed. We'll keep trying.")
+    toast.error("Google authorization finished, but calendar sync failed. Check Settings → Calendars.")
     url.searchParams.delete('google_sync')
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
   }, [])

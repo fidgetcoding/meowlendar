@@ -1,5 +1,7 @@
 'use client'
 
+import { GOOGLE_CALENDAR_SCOPES } from '@/lib/google/scopes'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Moon, Sun } from 'lucide-react'
@@ -141,13 +143,12 @@ export default function LoginPage() {
   async function handleGoogleLogin() {
     setLoading(true)
     setError(null)
-    // Identity only — calendar access is a separate Connect flow after login
-    // (never provider_token). The callback redirects to /api/google/connect
-    // when the user has no calendars linked yet.
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/callback`,
+        scopes: GOOGLE_CALENDAR_SCOPES,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     })
     if (error) {

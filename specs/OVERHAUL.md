@@ -37,8 +37,7 @@ v1 non-goals.
 - **Booking URLs path-based** `/book/{slug}` for now (spec's documented fallback); wildcard subdomains later.
 - **Creep code deleted from main** (recoverable at `pre-overhaul` tag).
 - **API keys stay SHA-256** (fine for 128-bit random keys); TECH.md amended rather than moving to bcrypt.
-- **OAuth architecture:** Supabase Auth = login only. Calendar access exclusively via the dedicated
-  Google Connect flow (own client ID/secret, calendar scopes). Never rely on `provider_token`.
+- **OAuth architecture (updated 2026-11-05):** Google sign-in requests calendar scopes in the same consent. The server validates the Google identity, stores calendar tokens encrypted, and removes provider tokens from the browser session. The dedicated Google Connect flow remains available for email users and additional accounts. This supersedes the earlier login-only decision.
 - **Cloud footprint is gone (discovered 2026-07-03):** the original Supabase and Vercel projects no
   longer exist. The schema is fully recoverable from migrations. Unit tests are DB-mocked, so Phases
   1-3 proceed; a real backend is required by Phase 4's E2E gate. A new project must keep a legacy
