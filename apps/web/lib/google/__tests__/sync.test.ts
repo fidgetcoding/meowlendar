@@ -608,6 +608,13 @@ describe('Google Calendar Sync', () => {
       await expect(pullChanges('acct-1', { waitForLeaseMs: 1000 })).rejects.toThrow('Google account not found')
       expect(claims).toBe(2)
     })
+
+    it('reports incomplete when the competing sync holds its lease past the wait', async () => {
+      mockSupabaseRpc.mockImplementation(async () => ({ data: null, error: null }))
+      const result = await pullChanges('acct-1', { waitForLeaseMs: 20 })
+      expect(result.complete).toBe(false)
+      expect(mockSupabaseRpc).toHaveBeenCalledWith('claim_account_sync', { p_account: 'acct-1' })
+    })
     it('upserts new events from Google', async () => {
       // Mock account lookup
       const mockAccountSingle = vi.fn().mockResolvedValue({
