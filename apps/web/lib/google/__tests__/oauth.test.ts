@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 
 // ── Supabase mock ──────────────────────────────────────────────────────────────
 
@@ -270,6 +270,32 @@ describe('Google OAuth', () => {
   // ── saveGoogleAccount ─────────────────────────────────────────────────
 
   describe('saveGoogleAccount()', () => {
+    let consoleError: ReturnType<typeof vi.spyOn> | null = null
+    afterEach(() => {
+      vi.doUnmock('../calendar')
+      consoleError?.mockRestore()
+      consoleError = null
+    })
+
+    /**
+     * The calendar-list sync after the save gets a token, then meets Google's 500, which the
+     * saved account has to survive. Without the token stub it failed sooner, on a mock with no
+     * `.single()`, and never reached that path.
+     */
+    function failCalendarListSync() {
+      vi.doMock('../calendar', async (importOriginal) => ({
+        ...(await importOriginal<typeof import('../calendar')>()),
+        getGoogleAccessToken: vi.fn().mockResolvedValue('at_for_sync'),
+      }))
+      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: false, status: 500 })
+      consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    }
+    const syncFailureLogged = () =>
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to fetch Google calendar list:',
+        expect.objectContaining({ message: 'Google calendar list failed: 500' }),
+      )
+
     /** Builds a from('google_accounts') stub whose upsert arg is inspectable. */
     function makeGoogleAccountsChain(opts: {
       existingRefresh?: string
@@ -307,7 +333,7 @@ describe('Google OAuth', () => {
         ),
       })
       // Calendar-list fetch fails → the calendars upsert loop is skipped.
-      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: false, status: 500 })
+      failCalendarListSync()
 
       const mod = await import('../oauth')
       const { isEncrypted, decryptToken } = await import('../../crypto')
@@ -320,6 +346,7 @@ describe('Google OAuth', () => {
       })
 
       expect(accountId).toBe('acct-9')
+      syncFailureLogged()
 
       const payload = ga.upsert.mock.calls[0]![0]
       // Ciphertext, not plaintext.
@@ -341,7 +368,7 @@ describe('Google OAuth', () => {
           table === 'google_accounts' ? ga : {}
         ),
       })
-      ;(globalThis.fetch as Mock).mockResolvedValueOnce({ ok: false, status: 500 })
+      failCalendarListSync()
 
       const mod = await import('../oauth')
       const { isEncrypted, decryptToken } = await import('../../crypto')
@@ -359,6 +386,7 @@ describe('Google OAuth', () => {
       // The fresh access token is still encrypted.
       expect(isEncrypted(payload.access_token)).toBe(true)
       expect(decryptToken(payload.access_token)).toBe('at_new')
+      syncFailureLogged()
     })
 
     it('throws when no refresh_token is provided and none is stored', async () => {

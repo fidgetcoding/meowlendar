@@ -65,7 +65,7 @@ export default function LoginPage() {
       setLoading(false)
       return
     }
-    const { error } = await supabase.auth.signInWithOAuth({
+    const result = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/callback`,
@@ -73,6 +73,7 @@ export default function LoginPage() {
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     })
+    const error = result?.error
     if (error) {
       setError(error.message)
       setLoading(false)

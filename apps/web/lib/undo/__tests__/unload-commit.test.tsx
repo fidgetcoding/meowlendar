@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
 import { createElement, type ReactNode } from 'react'
-import { mockSupabaseClient, mockSupabaseResults, resetSupabaseMocks } from '@/lib/hooks/__tests__/mock-supabase'
+import { mockSupabaseClient, mockSupabaseResult, mockSupabaseResults, resetSupabaseMocks } from '@/lib/hooks/__tests__/mock-supabase'
 import { calendarKeys } from '@/lib/hooks/use-calendars'
 import { createEventSchema } from '@poolendar/validators'
 import { UndoProvider } from '../undo-context'
@@ -89,6 +89,8 @@ describe('leaving the page right after creating something', () => {
   let fetchMock: ReturnType<typeof vi.spyOn<typeof globalThis, 'fetch'>>
   beforeEach(() => {
     resetSupabaseMocks()
+    // Each create's own write lands too, once the page has sent its resend.
+    mockSupabaseResult({ id: 'saved-row' })
     fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 201 }))
   })
   afterEach(() => fetchMock.mockRestore())
@@ -127,6 +129,7 @@ describe('the calendar of a create that left it unchosen', () => {
   let fetchMock: ReturnType<typeof vi.spyOn<typeof globalThis, 'fetch'>>
   beforeEach(() => {
     resetSupabaseMocks()
+    mockSupabaseResult({ id: 'saved-row' })
     fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 201 }))
   })
   afterEach(() => fetchMock.mockRestore())
@@ -170,7 +173,7 @@ describe('the calendar of a create that left it unchosen', () => {
     mockSupabaseClient.from.mockImplementation(((table: string) => (table === 'events' ? pending : passThrough())) as never)
     const actions = setupWith()
     act(() => { actions.current.createEvent({ ...unchosen }) })
-    await vi.waitFor(() => expect(mockSupabaseClient.from).toHaveBeenCalledWith('events'))
+    await waitFor(() => expect(mockSupabaseClient.from).toHaveBeenCalledWith('events'))
     act(() => { window.dispatchEvent(new Event('pagehide')) })
     expect(eventBody()).toMatchObject({ calendar_id: CAL })
     expect(createEventSchema.safeParse(eventBody()).success).toBe(true)

@@ -1,10 +1,10 @@
 import * as React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.stubGlobal('React', React)
 
-const signInWithOAuth = vi.fn().mockResolvedValue({ error: null })
+const signInWithOAuth = vi.fn()
 const signInWithPassword = vi.fn()
 const getSession = vi.fn()
 const router = { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }
@@ -27,6 +27,17 @@ import { resetGoogleSignInCheck } from '@/lib/auth/google-provider'
 
 const SETTINGS = 'http://127.0.0.1:54321/auth/v1/settings'
 
+/**
+ * Waits for the click's sign-in to finish. Left running, it ended after the test, where an
+ * unanswered mock made it throw outside any test.
+ */
+async function oauthSettled() {
+  await waitFor(() => expect(signInWithOAuth).toHaveBeenCalled())
+  await act(async () => {
+    await signInWithOAuth.mock.results[0]!.value
+  })
+}
+
 function answer(body: unknown, ok = true) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(body), { status: ok ? 200 : 500 }))
 }
@@ -36,6 +47,8 @@ function answer(body: unknown, ok = true) {
 describe('Continue with Google', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Set per test: restoreAllMocks() in afterEach clears a mock's answer.
+    signInWithOAuth.mockResolvedValue({ data: {}, error: null })
     resetGoogleSignInCheck()
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'http://127.0.0.1:54321')
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key')
@@ -84,7 +97,9 @@ describe('Continue with Google', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByText(/setup step 7/i)).toBeNull()
     fireEvent.click(button)
-    await waitFor(() => expect(signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google' })))
+    await oauthSettled()
+    expect(signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google' }))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it.each([
@@ -98,7 +113,7 @@ describe('Continue with Google', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByText(/setup step 7/i)).toBeNull()
     fireEvent.click(button)
-    await waitFor(() => expect(signInWithOAuth).toHaveBeenCalled())
+    await oauthSettled()
   })
 
   it('checks once per page load', async () => {
@@ -108,7 +123,9 @@ describe('Continue with Google', () => {
     await waitFor(() => expect(settingsCalls()).toBe(1))
     first.unmount()
     render(<LoginPage />)
-    await new Promise((r) => setTimeout(r, 0))
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
     expect(settingsCalls()).toBe(1)
   })
 })
@@ -144,7 +161,9 @@ describe('the demo account hint', () => {
     const fetchSpy = demo(false)
     render(<LoginPage />)
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith('/api/demo-available'))
-    await new Promise((r) => setTimeout(r, 0))
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
     expect(screen.queryByText(/just looking/i)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Use demo' })).toBeNull()
   })
