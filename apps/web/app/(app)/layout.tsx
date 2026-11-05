@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -39,58 +38,17 @@ import { useAppKeyboard } from '@/lib/hooks/use-app-keyboard'
 import { useSidebarCalendarDrop } from '@/lib/hooks/use-sidebar-calendar-drop'
 import { useDeleteSelected } from '@/lib/hooks/use-delete-selected'
 import { RoutineDeletePrompt } from '@/components/calendar/RoutineDeletePrompt'
-import { useOnline } from '@/lib/offline/use-online'
+import { OfflineBanner } from '@/components/OfflineBanner'
+import { useSessionGuard } from '@/lib/auth/use-session-guard'
 import { cn } from '@/lib/utils'
 import type { Profile } from '@poolendar/types'
+import type { User } from '@supabase/supabase-js'
 
 const BACKGROUND_SYNC_MS = 2 * 60_000
 
 // Defaults, not choices: the pre-redesign defaults and the brand periwinkle itself. These leave
 // the theme's own periwinkle in place, which is tuned separately for light and dark.
 const DEFAULT_ACCENTS = new Set(['#6366f1', '#f9a825', '#6f7ae0', '#515dcb'])
-
-// ---------------------------------------------------------------------------
-// Offline banner
-// ---------------------------------------------------------------------------
-
-function OfflineBanner() {
-  const { isOnline, wasOffline } = useOnline()
-  const [showReconnected, setShowReconnected] = useState(false)
-
-  useEffect(() => {
-    if (isOnline && wasOffline) {
-      setShowReconnected(true)
-      const timer = setTimeout(() => setShowReconnected(false), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [isOnline, wasOffline])
-
-  if (!isOnline) {
-    return (
-      <div
-        className="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium shrink-0"
-        style={{ backgroundColor: '#92400e', color: '#fef3c7' }}
-      >
-        <span className="w-2 h-2 rounded-full bg-yellow-300 animate-pulse" />
-        You are offline. Changes will sync when reconnected.
-      </div>
-    )
-  }
-
-  if (showReconnected) {
-    return (
-      <div
-        className="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium shrink-0 transition-opacity duration-1000"
-        style={{ backgroundColor: '#065f46', color: '#d1fae5' }}
-      >
-        <span className="w-2 h-2 rounded-full bg-green-300" />
-        Back online. Syncing...
-      </div>
-    )
-  }
-
-  return null
-}
 
 type MobileTab = 'calendar' | 'tasks' | 'kanban' | 'booking' | 'settings'
 
@@ -99,7 +57,6 @@ type MobileTab = 'calendar' | 'tasks' | 'kanban' | 'booking' | 'settings'
 // ---------------------------------------------------------------------------
 
 function AppChrome({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const supabase = createClient()
   const queryClient = useQueryClient()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -137,20 +94,12 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   const { data: calendars = [] } = useCalendars()
   useSettingsSync()
 
-  useEffect(() => {
-    async function loadProfile() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setProfile(data as Profile)
-    }
-    loadProfile()
-  }, [supabase, router])
+  // A failed check is not a sign-out: only a definite "no session" goes to the login page.
+  const loadProfile = useCallback(async (user: User) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    if (data) setProfile(data as Profile)
+  }, [supabase])
+  const { unreachable: serverUnreachable } = useSessionGuard(loadProfile)
 
   useEffect(() => {
     if (calendars.length > 0) {
@@ -366,7 +315,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
         )}
 
         <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
-          <OfflineBanner />
+          <OfflineBanner serverUnreachable={serverUnreachable} />
           <main className="flex-1 overflow-hidden pb-14 md:pb-0">
             <ErrorBoundary>{children}</ErrorBoundary>
           </main>
