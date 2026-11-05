@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   X,
   ChevronLeft,
@@ -14,6 +14,7 @@ import {
   User,
   Key,
   Calendar,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -181,6 +182,12 @@ export function SettingsModal({
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccount[]>([])
   const [calendars, setCalendars] = useState<CalendarType[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
+  const [settingsReady, setSettingsReady] = useState(false)
+  const loadedProfile = useRef<string | null>(null)
+  const lastQueued = useRef('')
+  const saveQueue = useRef<Promise<void>>(Promise.resolve())
+  const saveFailedRef = useRef(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(true)
 
   // Profile editing state
@@ -198,12 +205,17 @@ export function SettingsModal({
 
   // Load settings when modal opens
   useEffect(() => {
-    if (!open || !profile) return
+    if (!open) { loadedProfile.current = null; setSettingsReady(false); return }
+    if (!profile || loadedProfile.current === profile.id) return
 
-    setSettings({ ...DEFAULT_SETTINGS, ...profile.settings })
+    loadedProfile.current = profile.id
+    const initialSettings = { ...DEFAULT_SETTINGS, ...profile.settings }
+    lastQueued.current = JSON.stringify([initialSettings, profile.display_name || '', profile.username || '', profile.company || ''])
+    setSettings(initialSettings)
     setDisplayName(profile.display_name || '')
     setUsername(profile.username || '')
     setCompany(profile.company || '')
+    setSettingsReady(true)
 
     loadApiKeys()
     loadCalendars()
@@ -310,40 +322,53 @@ export function SettingsModal({
     }))
   }
 
-  const saveSettings = useCallback(async () => {
-    if (!profile) return
+  const saveSettings = useCallback(() => {
+    if (!profile || !settingsReady) return
+    const snapshot = JSON.stringify([settings, displayName, username, company])
+    if (snapshot === lastQueued.current) return
+    lastQueued.current = snapshot
     setSaving(true)
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          settings,
-          display_name: displayName || null,
-          username,
-          company: company || null,
+    setSaveFailed(false)
+    saveFailedRef.current = false
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        const { error } = await supabase.from('profiles').update({
+          settings, display_name: displayName || null, username, company: company || null,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', profile.id)
-
-      if (error) {
-        toast.error('Failed to save settings')
-        return
+        }).eq('id', profile.id)
+        if (error) throw error
+        if (lastQueued.current === snapshot) { saveFailedRef.current = false; setSaveFailed(false) }
+        onProfileUpdate({ ...profile, settings, display_name: displayName || null, username, company: company || null })
+      } catch {
+        if (lastQueued.current === snapshot) lastQueued.current = ''
+        saveFailedRef.current = true
+        setSaveFailed(true)
+        toast.error('Could not save settings. Please try again.')
+      } finally {
+        if (lastQueued.current === snapshot || lastQueued.current === '') setSaving(false)
       }
+    })
+  }, [profile, settingsReady, settings, displayName, username, company, supabase, onProfileUpdate])
 
-      onProfileUpdate({
-        ...profile,
-        settings,
-        display_name: displayName || null,
-        username,
-        company: company || null,
-      })
-      toast.success('Settings saved')
-    } catch {
-      toast.error('Failed to save settings')
-    } finally {
-      setSaving(false)
-    }
-  }, [profile, settings, displayName, username, company, supabase, onProfileUpdate])
+  useEffect(() => {
+    if (!open || !settingsReady) return
+    const timer = window.setTimeout(saveSettings, 600)
+    return () => window.clearTimeout(timer)
+  }, [open, settingsReady, saveSettings])
+
+  async function closeSettings() {
+    saveSettings()
+    await saveQueue.current
+    if (!saveFailedRef.current) onOpenChange(false)
+  }
+
+  async function signOut() {
+    saveSettings()
+    await saveQueue.current
+    if (saveFailedRef.current) return
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
 
   async function handleDeleteAccount() {
     if (!profile) return
@@ -389,7 +414,7 @@ export function SettingsModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={() => onOpenChange(false)}
+        onClick={closeSettings}
       />
 
       {/* Modal -- full-screen on mobile, centered card on desktop */}
@@ -410,7 +435,7 @@ export function SettingsModal({
             <h2 className="flex-1 text-sm font-semibold text-[var(--fg)]">Settings</h2>
           )}
           <button
-            onClick={() => onOpenChange(false)}
+            onClick={closeSettings}
             className="ml-auto rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
             aria-label="Close settings"
           >
@@ -449,6 +474,9 @@ export function SettingsModal({
                 </div>
               ))}
             </nav>
+            <button type="button" onClick={signOut} className="mt-auto flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]">
+              <LogOut className="h-4 w-4" /> Sign Out
+            </button>
           </div>
         )}
 
@@ -482,6 +510,14 @@ export function SettingsModal({
               </div>
             ))}
           </nav>
+          <button
+            type="button"
+            onClick={signOut}
+            className="mt-auto flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
         </div>
 
         {/* Right content -- shown on desktop always, on mobile only when nav is closed */}
@@ -492,15 +528,13 @@ export function SettingsModal({
               {findTabLabel(activeTab)}
             </h3>
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={saveSettings}
-                disabled={saving}
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
+              {saveFailed ? (
+                <Button size="sm" onClick={saveSettings}>Retry save</Button>
+              ) : saving ? (
+                <span className="text-xs text-[var(--muted)]" role="status">Saving...</span>
+              ) : null}
               <button
-                onClick={() => onOpenChange(false)}
+                onClick={closeSettings}
                 className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
                 aria-label="Close settings"
               >

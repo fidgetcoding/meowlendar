@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { User, Trash2, LogOut } from 'lucide-react'
+import { User, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { SettingsSection } from './SettingsSection'
@@ -40,11 +40,6 @@ export function AccountTab({
     })
   }, [])
 
-  async function handleSignOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }
 
   return (
     <>
@@ -115,21 +110,6 @@ export function AccountTab({
           onChange={(e) => onCompanyChange(e.target.value)}
           placeholder="Your company (optional)"
         />
-      </SettingsSection>
-
-      <SettingsSection title="Session">
-        <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4">
-          <div>
-            <p className="text-sm font-medium text-[var(--fg)]">Sign Out</p>
-            <p className="text-xs text-[var(--muted)]">
-              Sign out of your account on this device
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4" />
-            Sign Out
-          </Button>
-        </div>
       </SettingsSection>
 
       <SettingsSection title="Danger Zone">
