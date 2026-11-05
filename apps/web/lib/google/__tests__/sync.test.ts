@@ -598,6 +598,16 @@ describe('Google Calendar Sync', () => {
   // ── pullChanges ───────────────────────────────────────────────────────
 
   describe('pullChanges()', () => {
+    it('waits for a competing pull before starting a requested sync', async () => {
+      let claims = 0
+      mockSupabaseRpc.mockImplementation(async (name: string) => {
+        if (name === 'claim_account_sync') return { data: ++claims === 1 ? null : 'fixture-lock', error: null }
+        return { data: true, error: null }
+      })
+      mockSupabaseFrom.mockReturnValue({ select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) })
+      await expect(pullChanges('acct-1', { waitForLeaseMs: 1000 })).rejects.toThrow('Google account not found')
+      expect(claims).toBe(2)
+    })
     it('upserts new events from Google', async () => {
       // Mock account lookup
       const mockAccountSingle = vi.fn().mockResolvedValue({

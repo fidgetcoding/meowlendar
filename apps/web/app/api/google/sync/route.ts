@@ -63,7 +63,10 @@ export async function POST(request: NextRequest) {
         Date.now() - new Date(account.last_synced_at).getTime() < MIN_PULL_INTERVAL_MS
       if (recent) continue
 
-      const result = await pullChanges(account.id)
+      const result = await pullChanges(account.id, { waitForLeaseMs: 10_000 })
+      if (!result.complete) {
+        return NextResponse.json({ error: 'A sync is already running. Try again shortly.' }, { status: 409 })
+      }
       totals.created += result.created
       totals.updated += result.updated
       totals.deleted += result.deleted

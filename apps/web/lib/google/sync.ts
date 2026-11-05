@@ -223,11 +223,18 @@ export function mapLocalEventToGoogle(event: CalendarEvent): GoogleEventInsert {
  */
 export async function pullChanges(
   accountId: string,
-  options: { deadlineMs?: number } = {},
+  options: { deadlineMs?: number; waitForLeaseMs?: number } = {},
 ): Promise<{ created: number; updated: number; deleted: number; complete: boolean }> {
   const supabase = getServiceClient()
-  const { data: token, error } = await supabase.rpc('claim_account_sync', { p_account: accountId })
-  if (error) throw new Error(`Failed to claim account sync: ${error.message}`)
+  const waitUntil = Date.now() + Math.max(0, options.waitForLeaseMs ?? 0)
+  let token: string | null = null
+  do {
+    const { data, error } = await supabase.rpc('claim_account_sync', { p_account: accountId })
+    if (error) throw new Error(`Failed to claim account sync: ${error.message}`)
+    token = data
+    if (token || Date.now() >= waitUntil) break
+    await new Promise((resolve) => setTimeout(resolve, Math.min(100, waitUntil - Date.now())))
+  } while (true)
   if (!token) return { created: 0, updated: 0, deleted: 0, complete: false }
   const renew = async () => {
     const { data, error } = await supabase.rpc('renew_account_sync', { p_account: accountId, p_token: token })
