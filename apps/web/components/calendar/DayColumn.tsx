@@ -39,7 +39,8 @@ interface LayoutColumn {
   totalColumns: number
 }
 
-function computeOverlapLayout(items: CalendarItemData[]): LayoutColumn[] {
+export function computeOverlapLayout(items: CalendarItemData[], hourHeight: number): LayoutColumn[] {
+  const visualEnd = (item: CalendarItemData) => Math.max(item.endTime.getTime(), item.startTime.getTime() + (MIN_ITEM_HEIGHT / hourHeight) * 3_600_000)
   if (items.length === 0) return []
 
   const sorted = [...items].sort((a, b) => {
@@ -58,11 +59,11 @@ function computeOverlapLayout(items: CalendarItemData[]): LayoutColumn[] {
 
     if (currentGroup.length === 0 || itemStart < currentGroupEnd) {
       currentGroup.push(item)
-      currentGroupEnd = Math.max(currentGroupEnd, item.endTime.getTime())
+      currentGroupEnd = Math.max(currentGroupEnd, visualEnd(item))
     } else {
       groups.push(currentGroup)
       currentGroup = [item]
-      currentGroupEnd = item.endTime.getTime()
+      currentGroupEnd = visualEnd(item)
     }
   }
   if (currentGroup.length > 0) {
@@ -77,7 +78,7 @@ function computeOverlapLayout(items: CalendarItemData[]): LayoutColumn[] {
       for (let col = 0; col < columns.length; col++) {
         const colItems = columns[col]!
         const lastInCol = colItems[colItems.length - 1]!
-        if (item.startTime.getTime() >= lastInCol.endTime.getTime()) {
+        if (item.startTime.getTime() >= visualEnd(lastInCol)) {
           colItems.push(item)
           placed = true
           break
@@ -175,7 +176,7 @@ export const DayColumn = React.memo(function DayColumn({
   }, [])
 
   const totalHeight = (endHour - startHour) * hourHeight
-  const layout = computeOverlapLayout(items)
+  const layout = computeOverlapLayout(items, hourHeight)
   const currentTimeTop = (currentMinutes / 60 - startHour) * hourHeight
 
   function yOffsetToTime(yOffset: number): Date {
