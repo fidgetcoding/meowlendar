@@ -2,14 +2,14 @@
 
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Copy, Check, Globe, Lock, CalendarClock, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Plus, Copy, Check, Globe, Lock, X, Link2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { BookingLink } from '@poolendar/types'
+import { useProfile } from '@/lib/hooks/use-profile'
 
 // ---------------------------------------------------------------------------
 // Booking panel (#51–52, #57a). A left-drawer list of the user's booking links
-// with a copy-public-URL action, plus a Pending Approvals queue at the top where
-// the host approves/declines requires_approval bookings.
+// with copy actions, plus a Pending Approvals queue where the host approves or
+// declines requires_approval bookings.
 // ---------------------------------------------------------------------------
 
 interface PendingBooking {
@@ -20,9 +20,28 @@ interface PendingBooking {
   booking_links: { name: string; slug: string } | { name: string; slug: string }[]
 }
 
-function bookingUrl(slug: string): string {
+function bookingUrl(path: string): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  return `${origin}/book/${slug}`
+  return `${origin}${path}`
+}
+
+/** Copies a URL; the check mark shows for a moment after. */
+function CopyButton({ url, label }: { url: string; label: string }) {
+  const [copied, setCopied] = React.useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard denied: leave the button as it was.
+    }
+  }
+  return (
+    <button type="button" onClick={copy} aria-label={label} title={label} className="meow-bp-copy">
+      {copied ? <Check size={14} style={{ color: 'var(--success)' }} /> : <Copy size={14} />}
+    </button>
+  )
 }
 
 function linkName(b: PendingBooking): string {
@@ -40,43 +59,18 @@ function whenLabel(iso: string): string {
   }).format(new Date(iso))
 }
 
-function LinkRow({ link }: { link: BookingLink }) {
-  const [copied, setCopied] = React.useState(false)
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(bookingUrl(link.slug))
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard denied — leave the button state unchanged.
-    }
-  }
-
+function LinkRow({ link, booked }: { link: BookingLink; booked: number }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-2 rounded hover:bg-[var(--surface-hover)] transition-colors">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-sm text-[var(--fg)]">{link.name}</span>
-          {link.is_public ? (
-            <Globe size={11} className="shrink-0 text-[var(--muted)]" aria-label="Public" />
-          ) : (
-            <Lock size={11} className="shrink-0 text-[var(--muted)]" aria-label="Private" />
-          )}
-        </div>
-        <div className="text-[11px] text-[var(--muted)]">
-          {link.duration_minutes} min · /book/{link.slug}
+    <div className="meow-bp-link">
+      <div className="min-w-0 flex-1">
+        <div className="meow-bp-name">{link.name}</div>
+        <div className="meow-bp-meta">
+          <span>{link.duration_minutes} min</span>
+          <span aria-hidden="true">·</span>
+          <span>{booked} booked</span>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={copy}
-        aria-label="Copy public link"
-        title="Copy public link"
-        className="shrink-0 flex items-center justify-center w-6 h-6 rounded text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface)] transition-colors"
-      >
-        {copied ? <Check size={13} style={{ color: 'var(--success)' }} /> : <Copy size={13} />}
-      </button>
+      <CopyButton url={bookingUrl(`/book/${link.slug}`)} label={`Copy link to ${link.name}`} />
     </div>
   )
 }
@@ -144,6 +138,28 @@ function PendingApprovals() {
   )
 }
 
+/** Confirmed bookings per link, for the "N booked" line. */
+function useBookedCounts(): Record<string, number> {
+  const { data = [] } = useQuery({
+    queryKey: ['booking-confirmed'],
+    queryFn: async (): Promise<{ booking_link_id: string }[]> => {
+      const res = await fetch('/api/booking/bookings?status=confirmed')
+      if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`)
+      const data = await res.json()
+      return (Array.isArray(data) ? data : (data?.items ?? [])) as { booking_link_id: string }[]
+    },
+  })
+  return React.useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const b of data) counts[b.booking_link_id] = (counts[b.booking_link_id] ?? 0) + 1
+    return counts
+  }, [data])
+}
+
+/**
+ * The booking panel, beside the ribbon (like Morgen): your booking page link, then public links
+ * and the private ones folded away, plus the approvals waiting on you.
+ */
 export function BookingPanel({ onNewLink }: { onNewLink: () => void }) {
   const { data: links = [], isLoading, isError } = useQuery({
     queryKey: ['booking-links'],
@@ -154,81 +170,63 @@ export function BookingPanel({ onNewLink }: { onNewLink: () => void }) {
       return (Array.isArray(data) ? data : (data?.items ?? [])) as BookingLink[]
     },
   })
+  const { data: profile } = useProfile()
+  const booked = useBookedCounts()
+  const [privateOpen, setPrivateOpen] = React.useState(false)
 
   const publicLinks = links.filter((l) => l.is_public)
   const privateLinks = links.filter((l) => !l.is_public)
+  const pageUrl = profile?.username ? bookingUrl(`/u/${profile.username}`) : null
 
   return (
-    <div
-      className="h-full overflow-y-auto flex flex-col"
-      style={{ backgroundColor: 'var(--bg)', borderRight: '1px solid var(--border)' }}
-    >
-      <div className="flex items-center justify-between px-3 py-2 shrink-0">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-          <CalendarClock size={13} />
-          Booking Links
-        </div>
-        <button
-          type="button"
-          onClick={onNewLink}
-          aria-label="New booking link"
-          title="New booking link"
-          className={cn(
-            'flex items-center justify-center w-6 h-6 rounded',
-            'text-[var(--muted)] hover:text-[var(--fg)]',
-            'hover:bg-[var(--surface-hover)] transition-colors duration-150'
-          )}
-        >
-          <Plus size={14} />
+    <div className="meow-bp">
+      <div className="meow-bp-head">
+        <h3>Booking page</h3>
+        <button type="button" onClick={onNewLink} aria-label="New booking link" title="New booking link" className="meow-bp-add">
+          <Plus size={18} strokeWidth={1.6} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-1">
+      {pageUrl && (
+        <div className="meow-bp-page">
+          <Link2 size={15} strokeWidth={1.6} aria-hidden="true" />
+          <a href={pageUrl} target="_blank" rel="noreferrer">Link to your booking page</a>
+          <CopyButton url={pageUrl} label="Copy link to your booking page" />
+        </div>
+      )}
+
+      <div className="meow-bp-body">
         <PendingApprovals />
 
-        {isLoading && (
-          <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">Loading…</div>
-        )}
-
-        {isError && (
-          <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">
-            Couldn’t load booking links.
-          </div>
-        )}
+        {isLoading && <p className="meow-bp-note">Loading...</p>}
+        {isError && <p className="meow-bp-note">Couldn&apos;t load booking links.</p>}
 
         {!isLoading && !isError && links.length === 0 && (
-          <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">
+          <div className="meow-bp-note">
             No booking links yet.
-            <button
-              type="button"
-              onClick={onNewLink}
-              className="mt-2 block w-full text-[var(--accent)] hover:underline"
-            >
+            <button type="button" onClick={onNewLink} className="meow-bp-first">
               Create your first link
             </button>
           </div>
         )}
 
         {publicLinks.length > 0 && (
-          <div className="mb-2">
-            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-              Public
-            </div>
-            {publicLinks.map((l) => (
-              <LinkRow key={l.id} link={l} />
-            ))}
-          </div>
+          <section aria-label="Public links">
+            <h4 className="meow-bp-h">
+              <Globe size={13} aria-hidden="true" /> Public links
+            </h4>
+            {publicLinks.map((l) => <LinkRow key={l.id} link={l} booked={booked[l.id] ?? 0} />)}
+          </section>
         )}
 
         {privateLinks.length > 0 && (
-          <div className="mb-2">
-            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-              Private
-            </div>
-            {privateLinks.map((l) => (
-              <LinkRow key={l.id} link={l} />
-            ))}
-          </div>
+          <section aria-label="Private links">
+            <button type="button" className="meow-bp-h is-toggle" aria-expanded={privateOpen} onClick={() => setPrivateOpen(!privateOpen)}>
+              {privateOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <Lock size={13} aria-hidden="true" /> Private links ({privateLinks.length})
+            </button>
+            {privateOpen && privateLinks.map((l) => <LinkRow key={l.id} link={l} booked={booked[l.id] ?? 0} />)}
+          </section>
         )}
       </div>
     </div>

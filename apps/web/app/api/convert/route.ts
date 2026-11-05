@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
+import { originOf } from '../../../lib/auth/origin'
 import { convertSchema } from '@poolendar/validators'
 import {
   createGoogleEvent,
   deleteGoogleEvent,
 } from '../../../lib/google/calendar'
 import { googleRecurrence } from '@/lib/recurrence'
+
+/**
+ * A Google event id chosen before Google sees the event, in its base32hex alphabet.
+ * A sync running meanwhile then finds this row instead of adding a second one.
+ */
+function newGoogleEventId(): string {
+  return `me${crypto.randomUUID().replace(/-/g, '')}`
+}
 
 export async function POST(request: NextRequest) {
   const auth = await authenticate(request)
@@ -71,6 +80,7 @@ export async function POST(request: NextRequest) {
         reminders: source.reminders,
         status: 'backlog',
         board: 'current',
+        created_via: originOf(auth),
       })
       .select()
       .single()
@@ -176,6 +186,7 @@ export async function POST(request: NextRequest) {
       reminders: source.reminders,
       status: 'confirmed',
       sync_status: 'synced',
+      google_event_id: cal.google_account_id ? newGoogleEventId() : null,
     }
 
     const { data: event, error: eventError } = await supabase
@@ -198,6 +209,7 @@ export async function POST(request: NextRequest) {
         cal.google_account_id,
         cal.google_calendar_id,
         {
+          id: event.google_event_id ?? undefined,
           summary: source.title,
           description: source.notes || undefined,
           start: { dateTime: startTime, timeZone: 'America/New_York' },
@@ -297,6 +309,7 @@ export async function POST(request: NextRequest) {
         reminders: source.reminders,
         status: 'backlog',
         board: 'current',
+        created_via: originOf(auth),
       })
       .select()
       .single()
@@ -353,6 +366,7 @@ export async function POST(request: NextRequest) {
       reminders: source.reminders,
       status: 'confirmed',
       sync_status: 'synced',
+      google_event_id: cal.google_account_id ? newGoogleEventId() : null,
     }
 
     const { data: event, error: eventError } = await supabase
@@ -375,6 +389,7 @@ export async function POST(request: NextRequest) {
         cal.google_account_id,
         cal.google_calendar_id,
         {
+          id: event.google_event_id ?? undefined,
           summary: source.title,
           description: source.notes || undefined,
           start: { dateTime: startDate.toISOString(), timeZone: source.timezone || 'America/New_York' },

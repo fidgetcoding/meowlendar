@@ -18,8 +18,9 @@ describe('UIStore - Initial state', () => {
     expect(useUIStore.getState().sidebarOpen).toBe(true)
   })
 
-  it('task panel is closed', () => {
-    expect(useUIStore.getState().taskPanelOpen).toBe(false)
+  it('task panel is open', () => {
+    expect(useUIStore.getState().activePanel).toBe('tasks')
+    expect(useUIStore.getState().taskPanelOpen).toBe(true)
   })
 
   it('booking panel is closed', () => {
@@ -67,11 +68,13 @@ describe('UIStore - Initial state', () => {
 
 describe('UIStore - toggleTaskPanel', () => {
   it('opens task panel when closed', () => {
+    useUIStore.getState().setTaskPanelOpen(false)
     useUIStore.getState().toggleTaskPanel()
     expect(useUIStore.getState().taskPanelOpen).toBe(true)
   })
 
   it('closes task panel when open', () => {
+    useUIStore.getState().setTaskPanelOpen(false)
     useUIStore.getState().toggleTaskPanel()
     useUIStore.getState().toggleTaskPanel()
     expect(useUIStore.getState().taskPanelOpen).toBe(false)

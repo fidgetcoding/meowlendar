@@ -88,6 +88,19 @@ export async function browserApi(user: TestUser, path: string, init: RequestInit
   })
 }
 
+/** Connects a fake Google account the way a browser does: connect, Google's redirect, the callback. */
+export async function connectGoogle(user: TestUser, email: string): Promise<string | null> {
+  await fakes('google/login-as', { email })
+  const { data } = await publicClient().auth.signInWithPassword({ email: user.email, password: user.password })
+  const ref = new URL(SUPABASE_URL).hostname.split('.')[0]
+  let cookie = `sb-${ref}-auth-token=base64-${Buffer.from(JSON.stringify(data.session)).toString('base64url')}`
+  const start = await fetch(`${APP}/api/google/connect`, { headers: { Cookie: cookie }, redirect: 'manual' })
+  cookie = `${cookie}; ${start.headers.getSetCookie().find((c) => c.startsWith('oauth_state='))!.split(';')[0]}`
+  const atGoogle = await fetch(start.headers.get('location')!, { redirect: 'manual' })
+  const back = await fetch(atGoogle.headers.get('location')!, { headers: { Cookie: cookie }, redirect: 'manual' })
+  return back.headers.get('location')
+}
+
 export function cron(route: string): Promise<Response> {
   return fetch(`${APP}/api/cron/${route}`, { headers: { Authorization: `Bearer ${CRON_SECRET}` } })
 }

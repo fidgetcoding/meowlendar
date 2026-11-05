@@ -215,6 +215,57 @@ describe('GET /api/events', () => {
   })
 })
 
+describe('GET /api/events with one meeting on two accounts', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const copy = (id: string, calendarId: string, extra: Record<string, unknown> = {}) => ({
+    id, calendar_id: calendarId, google_event_id: 'kickoff', ical_uid: 'kickoff@google.com', title: 'Kickoff',
+    start_time: '2026-06-15T09:00:00+00:00', end_time: '2026-06-15T10:00:00+00:00', timezone: 'UTC', recurrence_rule: null, attendees: [], ...extra,
+  })
+  const answer = (email: string, response_status: string) => [{ email, response_status, self: true }]
+  const calendars = [
+    { id: 'cal-work', source: 'google', access_role: 'owner', is_primary: true, google_account_id: 'acct-work' },
+    { id: 'cal-home', source: 'google', access_role: 'owner', is_primary: true, google_account_id: 'acct-home' },
+  ]
+  const accounts = [{ id: 'acct-work', email: 'nate@work.test' }, { id: 'acct-home', email: 'nate@home.test' }]
+  const list = (query = '') => GET(createRequest('GET', `/api/events?start=2026-06-15T00:00:00Z&end=2026-06-16T00:00:00Z&include=events${query}`))
+
+  it('returns it once, the copy you accepted, with the other copy in also_on', async () => {
+    mockAuthWithTables({
+      events: { data: [copy('home-copy', 'cal-home', { attendees: answer('nate@home.test', 'needsAction') }), copy('work-copy', 'cal-work', { attendees: answer('nate@work.test', 'accepted') })], error: null },
+      calendars: [{ data: [], error: null }, { data: calendars, error: null }],
+      google_accounts: { data: accounts, error: null },
+    })
+    const body = await (await list()).json()
+    expect(body.items).toHaveLength(1)
+    expect(body.items[0].id).toBe('work-copy')
+    expect(body.items[0].also_on).toEqual([
+      { event_id: 'home-copy', calendar_id: 'cal-home', account_email: 'nate@home.test', google_event_id: 'kickoff', response_status: 'needsAction' },
+    ])
+  })
+
+  it('keeps each day of a series, and returns every row with merge=false', async () => {
+    const series = { recurrence_rule: 'FREQ=DAILY;COUNT=3', start_time: '2026-06-15T09:00:00Z', end_time: '2026-06-15T10:00:00Z' }
+    mockAuthWithTables({
+      events: { data: [copy('a', 'cal-work', series), copy('b', 'cal-home', series)], error: null },
+      calendars: [{ data: [], error: null }, { data: calendars, error: null }],
+      google_accounts: { data: accounts, error: null },
+    })
+    const merged = await (await GET(createRequest('GET', '/api/events?start=2026-06-15T00:00:00Z&end=2026-06-18T00:00:00Z&include=events'))).json()
+    expect(merged.items.map((i: { id: string; start_time: string }) => [i.id, i.start_time])).toEqual([
+      ['a', '2026-06-15T09:00:00.000Z'], ['a', '2026-06-16T09:00:00.000Z'], ['a', '2026-06-17T09:00:00.000Z'],
+    ])
+
+    mockAuthWithTables({
+      events: { data: [copy('a', 'cal-work'), copy('b', 'cal-home')], error: null },
+      calendars: { data: [], error: null },
+    })
+    const raw = await (await list('&merge=false')).json()
+    expect(raw.items.map((i: { id: string }) => i.id).sort()).toEqual(['a', 'b'])
+    expect(raw.items.every((i: { also_on?: unknown }) => i.also_on === undefined)).toBe(true)
+  })
+})
+
 describe('POST /api/events', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -290,5 +341,87 @@ describe('POST /api/events', () => {
 
     expect(res.status).toBe(404)
     expect(body.error).toContain('Calendar not found')
+  })
+})
+
+// The page resends a just-made event while it unloads, under the id it chose. One event, not two.
+describe('POST /api/events with the id the page chose', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const CLIENT_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+  const localCalendar = { id: TEST_CALENDAR_ID, source: 'local', google_account_id: null, google_calendar_id: null }
+
+  it('creates the event under that id', async () => {
+    const supabase = mockAuthWithTables({
+      calendars: { data: localCalendar, error: null },
+      events: [
+        { data: null, error: null }, // not there yet
+        { data: { id: CLIENT_ID, ...validEventBody() }, error: null }, // insert
+      ],
+    })
+    const res = await POST(createRequest('POST', '/api/events', { ...validEventBody(), id: CLIENT_ID }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).id).toBe(CLIENT_ID)
+    const insert = supabase.from.mock.results[2]!.value.insert as ReturnType<typeof vi.fn>
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ id: CLIENT_ID }))
+  })
+
+  it('answers with the existing event when that id is already there, and inserts nothing', async () => {
+    const existing = { id: CLIENT_ID, ...validEventBody() }
+    const supabase = mockAuthWithTables({
+      calendars: { data: localCalendar, error: null },
+      events: { data: existing, error: null },
+    })
+    const res = await POST(createRequest('POST', '/api/events', { ...validEventBody(), id: CLIENT_ID }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).id).toBe(CLIENT_ID)
+    const eventsCalls = supabase.from.mock.calls.filter(([t]) => t === 'events')
+    expect(eventsCalls).toHaveLength(1)
+    expect(supabase.from.mock.results.find((r, i) => supabase.from.mock.calls[i]![0] === 'events')!.value.insert).not.toHaveBeenCalled()
+  })
+
+  it('a create that lost the race to its resend answers with the winner', async () => {
+    const existing = { id: CLIENT_ID, ...validEventBody() }
+    mockAuthWithTables({
+      calendars: { data: localCalendar, error: null },
+      events: [
+        { data: null, error: null },
+        { data: null, error: { code: '23505', message: 'duplicate key' } },
+        { data: existing, error: null },
+      ],
+    })
+    const res = await POST(createRequest('POST', '/api/events', { ...validEventBody(), id: CLIENT_ID }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).id).toBe(CLIENT_ID)
+  })
+
+  it('ignores an id that is not a UUID', async () => {
+    const supabase = mockAuthWithTables({
+      calendars: { data: localCalendar, error: null },
+      events: { data: { id: 'e-new', ...validEventBody() }, error: null },
+    })
+    await POST(createRequest('POST', '/api/events', { ...validEventBody(), id: 'not-a-uuid' }))
+    const insert = supabase.from.mock.results.find((r, i) => supabase.from.mock.calls[i]![0] === 'events')!.value.insert as ReturnType<typeof vi.fn>
+    expect(insert.mock.calls[0]![0]).not.toHaveProperty('id')
+  })
+})
+
+describe('POST /api/events busy or free', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const localCalendar = { id: TEST_CALENDAR_ID, source: 'local', google_account_id: null, google_calendar_id: null }
+  const insertedWith = async (extra: Record<string, unknown>) => {
+    const supabase = mockAuthWithTables({ calendars: { data: localCalendar, error: null }, events: { data: { id: 'e1' }, error: null } })
+    await POST(createRequest('POST', '/api/events', { ...validEventBody(), ...extra }))
+    const i = supabase.from.mock.calls.findIndex(([t]) => t === 'events')
+    return (supabase.from.mock.results[i]!.value.insert as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Record<string, unknown>
+  }
+
+  it('shows a new all-day event as free unless told otherwise, as Google does', async () => {
+    expect((await insertedWith({ is_all_day: true })).visibility).toBe('free')
+    expect((await insertedWith({ is_all_day: true, visibility: 'busy' })).visibility).toBe('busy')
+  })
+
+  it('keeps timed events busy by default', async () => {
+    expect((await insertedWith({ is_all_day: false })).visibility).toBe('busy')
+    expect((await insertedWith({ visibility: 'free' })).visibility).toBe('free')
   })
 })

@@ -32,3 +32,4 @@ export {
 export { convertSchema } from './convert'
 export { searchSchema } from './search'
 export * from './partial'
+export { isoInstant } from './instant'

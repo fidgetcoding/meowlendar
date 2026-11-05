@@ -17,4 +17,6 @@ export interface CalendarItemData {
   routine?: Routine
   /** Status of the routine instance for this day (populated by CalendarGrid) */
   routineInstanceStatus?: RoutineInstanceStatus
+  /** Other copies of this meeting, on other calendars, hidden by Merge duplicate events. */
+  duplicates?: CalendarItemData[]
 }

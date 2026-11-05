@@ -5,6 +5,10 @@ import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_COLORS = [
+  '#e8930c', // My Calendar
+  '#5a68d4', // Work
+  '#cf5d78', // Personal
+  '#2b93b4', // Gym
   '#7986cb', // Lavender
   '#33b679', // Sage
   '#8e24aa', // Grape
@@ -23,7 +27,7 @@ const DEFAULT_COLORS = [
   '#c0ca33', // Avocado
   '#009688', // Eucalyptus
   '#ad1457', // Cherry Blossom
-  '#f9a825', // Brand Accent
+  '#6f7ae0', // Periwinkle
   '#e91e63', // Pink
 ]
 

@@ -18,6 +18,7 @@ import {
   timeInTimezoneToUtc,
   addDaysStr,
   computeBlockedIntervals,
+  blocksBookings,
   computeAvailableSlots,
   type AvailabilityWindow,
   type BusyBooking,
@@ -182,7 +183,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const { data: existingEvents, error: eventsError } = await readAll(supabase
     .from('events')
-    .select('start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions')
+    .select('start_time, end_time, timezone, is_all_day, visibility, recurrence_rule, recurrence_exceptions')
     .eq('user_id', link.user_id)
     .neq('status', 'cancelled')
     .or(eventsInWindowFilter(new Date(rangeStartUtc.getTime() - link.buffer_minutes * 60_000).toISOString(), new Date(rangeEndUtc.getTime() + link.buffer_minutes * 60_000).toISOString())).order('id'))
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const blocked = computeBlockedIntervals({
     bookings,
-    events: (existingEvents ?? []).flatMap((e) =>
+    events: (existingEvents ?? []).filter(blocksBookings).flatMap((e) =>
       expandOccurrences(e, new Date(rangeStartUtc.getTime() - link.buffer_minutes * 60_000), new Date(rangeEndUtc.getTime() + link.buffer_minutes * 60_000)).map((o) => ({
         start_time: o.start.toISOString(),
         end_time: o.end.toISOString(),

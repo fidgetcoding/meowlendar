@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { NotificationListener } from '@/components/NotificationListener'
+import { AuthCacheSync } from '@/components/AuthCacheSync'
 import { ThemeProvider, useTheme } from '@/lib/theme'
 
 function ThemedToaster() {
@@ -43,6 +44,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
+        <AuthCacheSync />
         {children}
         <NotificationListener />
         <ThemedToaster />

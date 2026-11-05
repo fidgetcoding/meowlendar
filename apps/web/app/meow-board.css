@@ -1,0 +1,139 @@
+/* Meowlendar V2 board and sign-in page. Ported from the approved design (r4 app.css). */
+
+/* ---------- board header ---------- */
+.meow-bhdr{display:flex;align-items:center;gap:10px;height:62px;padding:0 20px;border-bottom:1px solid var(--line);flex:none;background:var(--surf)}
+.meow-bhdr h2{font-family:var(--fd);font-weight:400;font-size:25px;letter-spacing:-.02em;margin:0 8px 0 4px;color:var(--ink)}
+.meow-bseg{display:inline-flex;padding:3px;border-radius:99px;background:var(--paper);border:1px solid var(--line2)}
+.meow-bseg button{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 16px;border-radius:99px;font-weight:600;font-size:13.5px;color:var(--mut);transition:background .3s var(--ease),color .3s var(--ease)}
+.meow-bseg button span{font-size:11.5px;font-weight:600;color:var(--mut)}
+.meow-bseg button.is-on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px color-mix(in srgb,var(--ink) 14%,transparent)}
+
+/* ---------- columns ---------- */
+.meow-cols{display:flex;height:100%;min-height:0;overflow-x:auto;scrollbar-width:thin}
+.meow-bcol{flex:1 1 0;min-width:0;min-height:0;border-left:1px solid var(--line);padding:16px 14px 0;display:flex;flex-direction:column;position:relative;transition:background-color .2s var(--ease)}
+.meow-bcol:first-child{border-left:0}
+.meow-bcol.is-over{background-color:color-mix(in srgb,var(--peri) 6%,transparent)}
+.meow-bch{display:flex;align-items:center;gap:8px;padding:0 4px 0;flex:none}
+.meow-bch-title{display:flex;align-items:center;gap:8px;min-width:0}
+.meow-bch-h{font-family:var(--fd);font-weight:400;font-size:22px;letter-spacing:-.02em;color:var(--ink);white-space:nowrap}
+.meow-bch-cnt{font-size:12.5px;font-weight:700;color:var(--mut);background:var(--paper);border:1px solid var(--line2);border-radius:99px;padding:1px 8px}
+.meow-bch-add{margin-left:auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--ink2);flex:none}
+.meow-bch-add:hover{background:var(--lit)}
+.meow-blist{flex:1;min-height:0;overflow-y:auto;padding:22px 2px 12px;scrollbar-width:thin}
+.meow-bcards{display:flex;flex-direction:column;gap:10px}
+.meow-card.has-cat{margin-top:7px}
+.meow-bcards>.meow-card.has-cat:first-child{margin-top:0}
+
+/* ---------- cards ---------- */
+.meow-card{position:relative;background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:13px 14px 12px;display:grid;gap:9px;cursor:pointer;transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
+.meow-card:hover{border-color:color-mix(in srgb,var(--peri) 40%,var(--line2));box-shadow:0 10px 22px -18px color-mix(in srgb,var(--perid) 70%,transparent)}
+.meow-card:focus-visible{outline:2px solid var(--peri);outline-offset:2px}
+.meow-card.is-agent{border-color:color-mix(in srgb,var(--c-my) 55%,var(--line2))}
+.meow-card-ttl{display:flex;gap:9px;font-weight:600;font-size:14.5px;line-height:1.3;color:var(--ink)}
+.meow-card-ttl p{margin:0}
+.meow-card.is-done .meow-card-ttl{color:var(--mut)}
+.meow-card-notes{margin-top:2px!important;font-size:12.5px;font-weight:400;color:var(--mut);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meow-card-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--ink2)}
+.meow-card .meow-agent{font-size:12px}
+.meow-card .meow-agent-paw{width:13px;height:13px}
+.meow-grip{position:absolute;left:1px;top:14px;color:var(--mut);opacity:0;transition:opacity .15s}
+.meow-card:hover .meow-grip{opacity:.45}
+.meow-pill{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:7px;background:var(--paper);border:1px solid var(--line);font-weight:500;white-space:nowrap;color:var(--ink2)}
+.meow-pill.is-imp{border:0;color:#fff;font-weight:600;background:var(--ic)}
+.meow-pill.is-imp.is-normal{color:#4a3419}
+.meow-pill.is-today{background:color-mix(in srgb,var(--sun) 30%,var(--panel));border-color:color-mix(in srgb,var(--sun) 60%,transparent);color:var(--duetx);font-weight:600}
+.meow-pill.is-over{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--panel));font-weight:600}
+.meow-subt{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)}
+.meow-subt-bar{flex:1;height:4px;border-radius:4px;background:var(--line);overflow:hidden;max-width:90px}
+.meow-subt-bar i{display:block;height:100%;background:var(--peri)}
+
+/* priority cats sit on the frame: head and paws over the top edge */
+.meow-sit{position:absolute;top:-15.6px;width:30px;aspect-ratio:32/22;z-index:2;pointer-events:none}
+.meow-sit svg{width:100%;height:100%;display:block}
+
+/* long columns: one line per card */
+.meow-card.is-compact{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px}
+.meow-card.is-compact .meow-ck{margin-top:0}
+.meow-compact-title{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meow-card.is-compact.is-done .meow-compact-title{color:var(--mut)}
+.meow-compact-cat{display:inline-flex;flex:none}
+.meow-compact-cat svg{width:20px;height:14px}
+.meow-compact-due{font-size:11.5px;color:var(--mut);flex:none}
+.meow-compact-due.is-od{color:var(--red);font-weight:600}
+.meow-compact-due.is-td{color:var(--amberd);font-weight:600}
+
+.meow-empty{color:var(--mut);font-size:13.5px;padding:18px 6px;font-style:italic;font-family:var(--fd);border:1.5px dashed transparent;border-radius:12px;min-height:64px;transition:border-color .2s,background-color .2s}
+.meow-empty.is-over{border-color:var(--peri);background:color-mix(in srgb,var(--peri) 6%,transparent)}
+
+/* the big corner loaf at the foot of Done */
+.meow-donecat{margin-top:auto;align-self:flex-end;margin:auto 6px 10px 0;width:calc(120px * var(--loaf));aspect-ratio:120/66;flex:none;pointer-events:none}
+.meow-donecat svg{width:100%;height:100%;display:block}
+
+@media (max-width:767px){
+  .meow-bhdr{padding:8px 12px;height:auto;min-height:56px;flex-wrap:wrap;row-gap:6px}
+  .meow-bhdr h2{display:none}
+  .meow-cols{scroll-snap-type:x mandatory}
+  .meow-bcol{flex:0 0 auto;width:min(86vw,320px);scroll-snap-align:start}
+}
+
+/* ---------- sign in ---------- */
+.meow-login{min-height:100vh;background:var(--paper);display:flex;align-items:center;justify-content:center;padding:48px 16px;position:relative;overflow:hidden}
+.meow-login:before{content:'';position:absolute;inset:0 0 auto;height:min(46vh,380px);background:linear-gradient(to bottom,color-mix(in srgb,var(--peri) 16%,var(--paper)),var(--paper));pointer-events:none}
+.meow-login-col{position:relative;z-index:1;width:100%;max-width:380px}
+.meow-login-brand{text-align:center;margin-bottom:34px}
+.meow-login-brand h1{margin:0;display:flex;justify-content:center;color:var(--ink)}
+.meow-login-brand h1 svg{height:50px;width:auto}
+.meow-login-tag{margin-top:10px;font-family:var(--fd);font-style:italic;font-size:17px;color:var(--mut)}
+.meow-login-card{position:relative;background:var(--panel);border:1px solid var(--line2);border-radius:20px;padding:26px 24px 22px;box-shadow:0 24px 50px -34px color-mix(in srgb,var(--perid) 60%,transparent)}
+.meow-login-loaf{position:absolute;right:18px;top:0;width:calc(64px * var(--loaf));aspect-ratio:120/66;transform:translateY(calc(-100% + 2px));pointer-events:none}
+.meow-login-loaf svg{width:100%;height:100%;display:block}
+.meow-google{display:flex;width:100%;align-items:center;justify-content:center;gap:10px;height:48px;border-radius:99px;background:var(--perid);color:#fff;font-weight:600;font-size:15.5px;box-shadow:0 12px 24px -16px color-mix(in srgb,var(--perid) 90%,transparent);transition:filter .2s var(--ease),transform .2s var(--ease)}
+.meow-google:hover{filter:brightness(1.06)}
+.meow-google:active{transform:scale(.985)}
+.meow-google:disabled{opacity:.5;pointer-events:none}
+.meow-google-g{width:26px;height:26px;border-radius:50%;background:#fff;display:grid;place-items:center}
+.meow-google-g svg{width:16px;height:16px}
+.meow-google-notice{margin:12px 0 0;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.45;text-align:center;color:var(--ink);background:var(--perip);border:1px solid color-mix(in srgb,var(--peri) 35%,transparent)}
+.meow-google-notice a{color:var(--perid);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+[data-theme='dark'] .meow-google-notice a{color:var(--peri)}
+.meow-demo-hint{margin:14px 0 0;font-size:12.5px;line-height:1.5;color:var(--mut);text-align:center}
+.meow-demo-hint button{color:var(--perid);font-weight:600}
+.meow-demo-hint button:hover{text-decoration:underline;text-underline-offset:2px}
+[data-theme='dark'] .meow-demo-hint button{color:var(--peri)}
+.meow-google-off{margin:12px 2px 0;font-size:13px;line-height:1.45;color:var(--mut);text-align:center}
+.meow-google-off a{color:var(--perid);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+[data-theme='dark'] .meow-google-off a{color:var(--peri)}
+.meow-or{display:flex;align-items:center;gap:12px;margin:22px 0;font-size:12px;color:var(--mut)}
+.meow-or:before,.meow-or:after{content:'';flex:1;height:1px;background:var(--line2)}
+.meow-swap{margin-top:16px;text-align:center;font-size:14px;color:var(--mut)}
+.meow-swap button{color:var(--perid);font-weight:600}
+[data-theme='dark'] .meow-swap button{color:var(--peri)}
+.meow-swap button:hover{text-decoration:underline}
+.meow-login-foot{margin-top:22px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;font-size:12.5px;color:var(--mut)}
+.meow-login-foot svg{width:10px;height:10px;color:color-mix(in srgb,var(--peri) 70%,transparent)}
+.meow-theme-btn{position:absolute;right:16px;top:16px;z-index:2;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line2);background:var(--panel);color:var(--perik)}
+.meow-theme-btn:hover{background:var(--lit)}
+
+/* ---------- booking panel, beside the ribbon ---------- */
+.meow-bpanel{width:272px;flex:none;flex-direction:column;min-height:0;overflow:hidden;border-right:1px solid var(--line);background:var(--paper)}
+.meow-bp{display:flex;flex-direction:column;height:100%;min-height:0;width:100%}
+.meow-bp-head{display:flex;align-items:center;gap:8px;height:62px;padding:0 12px 0 18px;border-bottom:1px solid var(--line);flex:none}
+.meow-bp-head h3{margin:0;font-family:var(--fd);font-weight:400;font-size:21px;letter-spacing:-.02em;color:var(--ink)}
+.meow-bp-add{margin-left:auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:var(--ink2)}
+.meow-bp-add:hover{background:var(--lit)}
+.meow-bp-page{display:flex;align-items:center;gap:9px;margin:12px 12px 4px;padding:9px 6px 9px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line2);font-size:13.5px;font-weight:600;color:var(--perid);flex:none}
+.meow-bp-page a{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meow-bp-page a:hover{text-decoration:underline;text-underline-offset:2px}
+[data-theme='dark'] .meow-bp-page{color:var(--peri)}
+.meow-bp-body{flex:1;min-height:0;overflow-y:auto;padding:6px 8px 12px;scrollbar-width:thin}
+.meow-bp-h{display:flex;align-items:center;gap:6px;width:100%;margin:10px 0 2px;padding:4px 8px;font:700 10.5px/1 var(--fu);letter-spacing:.12em;text-transform:uppercase;color:var(--mut);text-align:left}
+.meow-bp-h.is-toggle{border-radius:8px}
+.meow-bp-h.is-toggle:hover{background:var(--lit);color:var(--ink2)}
+.meow-bp-link{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 10px;border-radius:10px;transition:background .2s var(--ease)}
+.meow-bp-link:hover{background:var(--lit)}
+.meow-bp-name{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meow-bp-meta{display:flex;gap:6px;font-size:12px;color:var(--mut);margin-top:1px}
+.meow-bp-copy{width:30px;height:30px;flex:none;border-radius:8px;display:grid;place-items:center;color:var(--mut)}
+.meow-bp-copy:hover{background:var(--panel);color:var(--ink)}
+.meow-bp-note{padding:28px 12px;text-align:center;font-size:13.5px;color:var(--mut)}
+.meow-bp-first{display:block;width:100%;margin-top:8px;color:var(--perid);font-weight:600}

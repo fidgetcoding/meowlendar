@@ -15,8 +15,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { Undo2, Redo2, X } from 'lucide-react'
-import type { CalendarEvent, Task, Routine } from '@poolendar/types'
+import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { SidebarRibbon } from '@/components/sidebar/SidebarRibbon'
 import { TaskPanel } from '@/components/sidebar/TaskPanel'
@@ -35,16 +34,20 @@ import { useUndoable } from '@/lib/hooks/use-undoable'
 import { useProfile } from '@/lib/hooks/use-profile'
 import { useCalendars, calendarKeys } from '@/lib/hooks/use-calendars'
 import { eventKeys } from '@/lib/hooks/use-events'
-import { taskKeys } from '@/lib/hooks/use-tasks'
-import { routineKeys } from '@/lib/hooks/use-routines'
 import { useSettingsSync } from '@/lib/hooks/use-settings-sync'
 import { useAppKeyboard } from '@/lib/hooks/use-app-keyboard'
 import { useSidebarCalendarDrop } from '@/lib/hooks/use-sidebar-calendar-drop'
+import { useDeleteSelected } from '@/lib/hooks/use-delete-selected'
+import { RoutineDeletePrompt } from '@/components/calendar/RoutineDeletePrompt'
 import { useOnline } from '@/lib/offline/use-online'
 import { cn } from '@/lib/utils'
 import type { Profile } from '@poolendar/types'
 
 const BACKGROUND_SYNC_MS = 2 * 60_000
+
+// Defaults, not choices: the pre-redesign defaults and the brand periwinkle itself. These leave
+// the theme's own periwinkle in place, which is tuned separately for light and dark.
+const DEFAULT_ACCENTS = new Set(['#6366f1', '#f9a825', '#6f7ae0', '#515dcb'])
 
 // ---------------------------------------------------------------------------
 // Offline banner
@@ -91,61 +94,6 @@ function OfflineBanner() {
 
 type MobileTab = 'calendar' | 'tasks' | 'kanban' | 'booking' | 'settings'
 
-/** Find an entity by id across every cached list for a query key. */
-function findInCache<T extends { id: string }>(
-  qc: ReturnType<typeof useQueryClient>,
-  key: readonly unknown[],
-  id: string
-): T | undefined {
-  for (const [, data] of qc.getQueriesData<T[]>({ queryKey: key })) {
-    const hit = data?.find((item) => item.id === id)
-    if (hit) return hit
-  }
-  return undefined
-}
-
-// ---------------------------------------------------------------------------
-// Undo/Redo top bar — consumes the shared engine (#72d)
-// ---------------------------------------------------------------------------
-
-function UndoBar() {
-  const { undo, redo, canUndo, canRedo } = useUndoContext()
-  return (
-    <div className={cn('flex items-center gap-1 px-2 py-1 shrink-0', 'border-b border-[var(--border)] bg-[var(--surface)]')}>
-      <button
-        type="button"
-        onClick={undo}
-        disabled={!canUndo}
-        aria-label="Undo"
-        title="Undo (Ctrl+Z)"
-        className={cn(
-          'flex items-center justify-center w-7 h-7 rounded transition-colors duration-150',
-          canUndo
-            ? 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-            : 'text-[var(--border)] cursor-not-allowed'
-        )}
-      >
-        <Undo2 size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={redo}
-        disabled={!canRedo}
-        aria-label="Redo"
-        title="Redo (Ctrl+Shift+Z)"
-        className={cn(
-          'flex items-center justify-center w-7 h-7 rounded transition-colors duration-150',
-          canRedo
-            ? 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-            : 'text-[var(--border)] cursor-not-allowed'
-        )}
-      >
-        <Redo2 size={16} />
-      </button>
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // App chrome — everything inside the undo provider
 // ---------------------------------------------------------------------------
@@ -177,6 +125,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   const setActivePanel = useUIStore((s) => s.setActivePanel)
   const toggleTaskPanel = useUIStore((s) => s.toggleTaskPanel)
   const toggleBookingPanel = useUIStore((s) => s.toggleBookingPanel)
+  const setTaskPanelViewMode = useUIStore((s) => s.setTaskPanelViewMode)
   const openEditForm = useUIStore((s) => s.openEditForm)
   const setActiveSettingsPanel = useUIStore((s) => s.setActiveSettingsPanel)
 
@@ -211,7 +160,8 @@ function AppChrome({ children }: { children: React.ReactNode }) {
 
   const accentColor = profileData?.settings?.theme_accent_color ?? profile?.settings?.theme_accent_color
   useEffect(() => {
-    if (accentColor) {
+    // Any colour the user picked wins; the defaults keep the theme's periwinkle.
+    if (accentColor && !DEFAULT_ACCENTS.has(accentColor.toLowerCase())) {
       document.documentElement.style.setProperty('--accent-color', accentColor)
       document.documentElement.style.setProperty('--accent', accentColor)
     }
@@ -256,20 +206,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
     }
   }, [refreshCalendars])
 
-  const deleteSelected = useCallback(() => {
-    const { selectedItemId: id, selectedItemType: type } = useCalendarStore.getState()
-    if (!id || !type) return
-    if (type === 'event') {
-      const ev = findInCache<CalendarEvent>(queryClient, eventKeys.lists(), id)
-      if (ev) undoable.deleteEvent(ev)
-    } else if (type === 'task') {
-      const t = findInCache<Task>(queryClient, taskKeys.lists(), id)
-      if (t) undoable.deleteTask(t)
-    } else {
-      const r = findInCache<Routine>(queryClient, routineKeys.lists(), id)
-      if (r) undoable.deleteRoutine(r)
-    }
-  }, [queryClient, undoable])
+  const deleteSelected = useDeleteSelected()
 
   const splitSelected = useCallback(() => {
     const { selectedItemId: id, selectedItemType: type } = useCalendarStore.getState()
@@ -316,6 +253,25 @@ function AppChrome({ children }: { children: React.ReactNode }) {
   const showTaskSidebar = activePanel === 'tasks' && taskPanelViewMode !== 'board'
   const showBookingSidebar = activePanel === 'booking'
 
+  // The ribbon highlights what fills the main area: the board under Tasks, the week under Calendar.
+  const activeNav = showBookingSidebar ? 'booking' : taskPanelViewMode === 'board' ? 'tasks' : 'calendar'
+
+  // Calendar: the week, with its task panel open on the right.
+  const showCalendarView = useCallback(() => {
+    setTaskPanelViewMode('sidebar')
+    setActivePanel('tasks')
+  }, [setActivePanel, setTaskPanelViewMode])
+
+  // Tasks: the full board; pressing it again goes back to the week.
+  const toggleBoard = useCallback(() => {
+    if (taskPanelViewMode === 'board' && !showBookingSidebar) {
+      showCalendarView()
+      return
+    }
+    if (showBookingSidebar) setActivePanel('tasks')
+    setTaskPanelViewMode('board')
+  }, [taskPanelViewMode, showBookingSidebar, showCalendarView, setActivePanel, setTaskPanelViewMode])
+
   return (
     <DndContext
       id="calendar-dnd"
@@ -328,35 +284,21 @@ function AppChrome({ children }: { children: React.ReactNode }) {
         {/* Desktop ribbon */}
         <div className="hidden md:flex">
           <SidebarRibbon
-            activePanel={activePanel}
+            activePanel={activeNav}
             isExpanded={sidebarExpanded}
-            onToggleTasks={toggleTaskPanel}
-            onCalendarView={() => setActivePanel('calendar')}
+            onToggleTasks={toggleBoard}
+            onCalendarView={showCalendarView}
             onToggleBooking={toggleBookingPanel}
             onSettings={() => openSettings()}
             onToggleExpand={() => setSidebarExpanded((e) => !e)}
           />
         </div>
 
-        {/* Task sidebar panel -- desktop only, hidden in board mode */}
-        {showTaskSidebar && (
-          <div className="hidden md:flex w-[280px] shrink-0 overflow-hidden flex-col">
-            <TaskPanel />
-            <div className="border-t border-[var(--border)] p-2">
-              <CalendarList
-                calendars={calendars}
-                onToggle={(calendarId) => calendarStore.toggleCalendarVisibility(calendarId)}
-                onAddAccount={() => openSettings('calendars')}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Booking sidebar panel -- desktop only */}
+        {/* Booking panel on the left, beside the ribbon (like Morgen) -- desktop only */}
         {showBookingSidebar && (
-          <div className="hidden md:flex w-[280px] shrink-0 overflow-hidden flex-col">
+          <aside className="meow-bpanel hidden md:flex" aria-label="Booking">
             <BookingPanel onNewLink={() => openSettings('booking')} />
-          </div>
+          </aside>
         )}
 
         {/* Mobile task panel -- full-screen overlay */}
@@ -423,13 +365,26 @@ function AppChrome({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
           <OfflineBanner />
-          <UndoBar />
           <main className="flex-1 overflow-hidden pb-14 md:pb-0">
             <ErrorBoundary>{children}</ErrorBoundary>
           </main>
         </div>
+
+        {/* Task panel on the right -- desktop only, open by default, hidden in board mode */}
+        {showTaskSidebar && (
+          <aside className="meow-panel hidden md:flex" aria-label="Tasks">
+            <TaskPanel onHide={toggleTaskPanel}>
+              <CalendarList
+                calendars={calendars}
+                onToggle={(calendarId) => calendarStore.toggleCalendarVisibility(calendarId)}
+                onAddAccount={() => openSettings('calendars')}
+              />
+            </TaskPanel>
+          </aside>
+        )}
+
       </div>
 
       <BottomTabBar activeTab={mobileTab} onTabChange={handleMobileTab} />
@@ -450,6 +405,8 @@ function AppChrome({ children }: { children: React.ReactNode }) {
       />
 
       <ShortcutOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <RoutineDeletePrompt />
 
       <SettingsModal
         open={settingsOpen}

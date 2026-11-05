@@ -1,6 +1,7 @@
 'use client'
 
 import type { TaskBoard } from '@poolendar/types'
+import { cn } from '@/lib/utils'
 
 interface BoardSwitcherProps {
   activeBoard: TaskBoard
@@ -15,72 +16,24 @@ export function BoardSwitcher({
   currentCount,
   futureCount,
 }: BoardSwitcherProps) {
+  const boards: { id: TaskBoard; label: string; count: number }[] = [
+    { id: 'current', label: 'Current', count: currentCount },
+    { id: 'future', label: 'Future', count: futureCount },
+  ]
   return (
-    <div
-      className="inline-flex rounded-lg p-0.5"
-      style={{ backgroundColor: 'var(--surface)' }}
-    >
-      <button
-        type="button"
-        onClick={() => onBoardChange('current')}
-        className="px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-2"
-        style={{
-          backgroundColor:
-            activeBoard === 'current' ? 'var(--bg)' : 'transparent',
-          color:
-            activeBoard === 'current' ? 'var(--fg)' : 'var(--muted)',
-          boxShadow:
-            activeBoard === 'current'
-              ? '0 1px 3px rgba(0, 0, 0, 0.3)'
-              : 'none',
-        }}
-      >
-        Current
-        <span
-          className="text-xs px-1.5 py-0.5 rounded-full font-normal"
-          style={{
-            backgroundColor:
-              activeBoard === 'current'
-                ? 'var(--accent)'
-                : 'var(--border)',
-            color:
-              activeBoard === 'current' ? '#000' : 'var(--muted)',
-          }}
+    <div className="meow-bseg" role="group" aria-label="Board">
+      {boards.map((b) => (
+        <button
+          key={b.id}
+          type="button"
+          onClick={() => onBoardChange(b.id)}
+          aria-pressed={activeBoard === b.id}
+          className={cn(activeBoard === b.id && 'is-on')}
         >
-          {currentCount}
-        </span>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onBoardChange('future')}
-        className="px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-2"
-        style={{
-          backgroundColor:
-            activeBoard === 'future' ? 'var(--bg)' : 'transparent',
-          color:
-            activeBoard === 'future' ? 'var(--fg)' : 'var(--muted)',
-          boxShadow:
-            activeBoard === 'future'
-              ? '0 1px 3px rgba(0, 0, 0, 0.3)'
-              : 'none',
-        }}
-      >
-        Future
-        <span
-          className="text-xs px-1.5 py-0.5 rounded-full font-normal"
-          style={{
-            backgroundColor:
-              activeBoard === 'future'
-                ? 'var(--accent)'
-                : 'var(--border)',
-            color:
-              activeBoard === 'future' ? '#000' : 'var(--muted)',
-          }}
-        >
-          {futureCount}
-        </span>
-      </button>
+          {b.label}
+          <span className="tabular-nums">{b.count}</span>
+        </button>
+      ))}
     </div>
   )
 }

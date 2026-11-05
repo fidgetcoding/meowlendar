@@ -2,6 +2,7 @@ import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError } from '../../../lib/auth/helpers'
 import { paginate } from '../../../lib/pagination'
+import { mergeCopies, type CopyFacts } from '../../../lib/event-merge'
 
 
 export async function GET(request: NextRequest) {
@@ -33,6 +34,10 @@ export async function GET(request: NextRequest) {
 
   const seen = new Set<string>()
   const results: { type: string; id: string; title: string; date: string | null; snippet: string | null }[] = []
+  // What tells copies of one meeting apart, by event id.
+  const eventFacts = new Map<string, CopyFacts>()
+  const noteFacts = (e: { id: string; calendar_id: string; ical_uid: string | null; title: string; start_time: string; end_time: string }) =>
+    eventFacts.set(e.id, { calendarId: e.calendar_id, icalUid: e.ical_uid, title: e.title, start: Date.parse(e.start_time), end: Date.parse(e.end_time) })
 
   function pushUnique(item: typeof results[number]) {
     const key = `${item.type}:${item.id}`
@@ -48,7 +53,7 @@ export async function GET(request: NextRequest) {
     queries.push(
       readAll(supabase
         .from('events')
-        .select('id, title, notes, start_time')
+        .select('id, title, notes, start_time, end_time, calendar_id, ical_uid')
         .eq('user_id', userId)
         .or(`title.ilike.${pattern},notes.ilike.${pattern}`)
         .order('start_time', { ascending: false })
@@ -56,6 +61,7 @@ export async function GET(request: NextRequest) {
         .then(({ data, error }) => {
           if (error) throw error
           for (const e of data ?? []) {
+            noteFacts(e)
             pushUnique({
               type: 'event',
               id: e.id,
@@ -71,7 +77,7 @@ export async function GET(request: NextRequest) {
     queries.push(
       readAll(supabase
         .from('events')
-        .select('id, title, notes, start_time, attendees')
+        .select('id, title, notes, start_time, end_time, calendar_id, ical_uid, attendees')
         .eq('user_id', userId)
         .ilike('attendee_search_text', pattern)
         .order('start_time', { ascending: false })
@@ -79,6 +85,7 @@ export async function GET(request: NextRequest) {
         .then(({ data, error }) => {
           if (error) throw error
           for (const e of data ?? []) {
+            noteFacts(e)
             const attendees = (e.attendees ?? []) as { email: string; name?: string }[]
             const matchedEmail = attendees.find(
               (a) => a.email?.toLowerCase().includes(q!.toLowerCase())
@@ -186,6 +193,12 @@ export async function GET(request: NextRequest) {
 
   try { await Promise.all(queries) }
   catch { return NextResponse.json({ error: 'Failed to search' }, { status: 500 }) }
+
+  // A meeting on several calendars or accounts is one result, as on the grid.
+  if (searchParams.get('merge') !== 'false') {
+    const kept = mergeCopies(results, (r) => (r.type === 'event' ? eventFacts.get(r.id) ?? null : null), () => 0).shown
+    results.splice(0, results.length, ...kept)
+  }
 
   // Sort by date descending
   results.sort((a, b) => {

@@ -1,6 +1,8 @@
 export type TaskStatus = 'backlog' | 'in_progress' | 'check' | 'done'
 export type TaskBoard = 'current' | 'future'
 export type TaskImportance = 'lowest' | 'low' | 'normal' | 'high' | 'highest'
+/** Where a task was created: 'api' through an API key (an agent via the MCP, or a script), 'app' in the web app. */
+export type TaskOrigin = 'app' | 'api'
 
 export interface Subtask {
   id: string
@@ -38,6 +40,8 @@ export interface Task {
   reminders: { minutes_before: number }[]
   /** Link to a line in an Obsidian vault, `<vault name>:<line id>`. Null when unlinked. */
   vault_ref: string | null
+  /** Set by the server on create; null on tasks made before it was recorded. Never client-writable through the API. */
+  created_via?: TaskOrigin | null
   created_at: string
   updated_at: string
   subtasks?: Subtask[]

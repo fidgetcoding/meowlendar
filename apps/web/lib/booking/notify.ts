@@ -175,7 +175,7 @@ export async function sendBookingConfirmationEmail(
 
   return deliver({
     to: booking.booker_email,
-    subject: `Confirmed: ${link.name} — ${when}`,
+    subject: `Confirmed: ${link.name}, ${when}`,
     html,
     ics,
   })
@@ -233,7 +233,7 @@ export async function notifyHostOfBooking(
   try {
     const results = await dispatchNotification(supabase, link.user_id, {
       title: titles[kind],
-      body: `${booking.booker_name} — ${when}`,
+      body: `${booking.booker_name}, ${when}`,
       event: 'booking',
       url: '/',
       data: {

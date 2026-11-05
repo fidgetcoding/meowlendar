@@ -14,6 +14,7 @@ import { useTask } from '@/lib/hooks/use-tasks'
 import { useUndoable } from '@/lib/hooks/use-undoable'
 import { ItemEditForm, type ItemEditFormInitialData } from './ItemEditForm'
 import { parseRoutineItemId } from './grid-helpers'
+import { copyLabels, otherCopiesOf, type AccountEmails } from './event-copies'
 import { buildConvertBody, convertRequirements, type ItemType } from '@/lib/convert'
 import { parseEventItemId } from '@/lib/recurrence'
 import { useRecurringEventChange } from '@/lib/hooks/use-events'
@@ -26,6 +27,8 @@ interface EditFormHostProps {
   calendars: Calendar[]
   tags: Tag[]
   userId: string | null
+  /** Account id to email, to name the accounts a meeting reached. */
+  accountEmails?: AccountEmails
 }
 
 function invalidateAll(queryClient: ReturnType<typeof useQueryClient>) {
@@ -108,6 +111,7 @@ export function EditFormHost({
   calendars,
   tags,
   userId,
+  accountEmails = {},
 }: EditFormHostProps) {
   const queryClient = useQueryClient()
   const {
@@ -117,6 +121,7 @@ export function EditFormHost({
     editFormItemType,
     editFormTab,
     editFormInitialData,
+    editFormAnchor,
     closeEditForm,
   } = useUIStore()
 
@@ -176,6 +181,10 @@ export function EditFormHost({
   }
 
   const attendeeCount = sourceEvent?.attendees?.length ?? 0
+  // The other calendars this meeting is on, when merged copies hide them on the grid.
+  const alsoOn = sourceEvent
+    ? copyLabels([sourceEvent, ...otherCopiesOf(sourceEvent, events)], calendars, accountEmails).slice(1)
+    : []
   const subtaskCount = sourceTask?.subtasks?.length ?? 0
 
   // ------ Save routing ------
@@ -439,7 +448,9 @@ export function EditFormHost({
     } else if (editFormItemType === 'task' && sourceTask) {
       undoable.deleteTask(sourceTask)
     } else if (editFormItemType === 'routine' && sourceRoutine) {
-      undoable.deleteRoutine(sourceRoutine)
+      // The form opened from the grid knows which day it is; from elsewhere only "all" applies.
+      const date = editFormItemId ? parseRoutineItemId(editFormItemId).date : null
+      undoable.deleteRoutineOccurrences(sourceRoutine, date, scope ?? { type: 'all' })
     }
     closeEditForm()
   }
@@ -462,6 +473,9 @@ export function EditFormHost({
       onDelete={handleDelete}
       onSplit={handleSplit}
       onClose={closeEditForm}
+      anchor={editFormAnchor}
+      anchorItemId={editFormItemId}
+      alsoOn={alsoOn}
     />
   )
 }

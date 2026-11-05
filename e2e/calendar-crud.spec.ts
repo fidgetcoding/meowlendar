@@ -41,9 +41,20 @@ test.describe('calendar item CRUD (#12–#15)', () => {
     // The first column is an empty day, so the slot is free.
     const column = page.locator('[data-day-column]').first()
     await column.dblclick({ position: { x: 30, y: 300 } })
-    // The quick-create popover appears with a title field.
-    await expect(page.getByRole('textbox').first()).toBeVisible()
+    // The editor popup opens beside the new slot, its title field focused.
+    const editor = page.getByRole('dialog', { name: /new event/i })
+    await expect(editor).toBeVisible()
+    await expect(editor.getByPlaceholder(/add title/i)).toBeFocused()
+    // Beside the slot: the card starts to the right of the column (or ends left of it).
+    const [card, col] = await Promise.all([editor.boundingBox(), column.boundingBox()])
+    expect(card!.x >= col!.x + col!.width || card!.x + card!.width <= col!.x).toBe(true)
+  })
+
+  test('#12 single click on an empty slot still offers quick add', async ({ page }) => {
+    const column = page.locator('[data-day-column]').first()
+    await column.click({ position: { x: 30, y: 300 } })
     await expect(page.getByPlaceholder(/add title/i)).toBeVisible()
+    await expect(page.getByRole('dialog', { name: /new event/i })).toHaveCount(0)
   })
 
   test('#12 click-drag on an empty slot sets a duration', async ({ page }) => {
@@ -58,8 +69,9 @@ test.describe('calendar item CRUD (#12–#15)', () => {
     await page.mouse.down()
     await page.mouse.move(x, y + 90, { steps: 8 })
     await page.mouse.up()
-    // A range drag opens the quick-create popover with a title field.
-    await expect(page.getByRole('textbox').first()).toBeVisible()
+    // A range drag opens the editor popup beside the new slot.
+    await expect(page.getByRole('dialog', { name: /new event/i })).toBeVisible()
+    await expect(page.getByPlaceholder(/add title/i)).toBeFocused()
   })
 
   test('#12 right-click an empty slot offers create event/task/routine', async ({ page }) => {
@@ -73,6 +85,7 @@ test.describe('calendar item CRUD (#12–#15)', () => {
 
   test('#13 double-click an item opens the edit form with three tabs', async ({ page }) => {
     await page.locator(EVENT).first().dblclick()
+    await expect(page.getByRole('dialog', { name: /edit event/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^event$/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^task$/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /^routine$/i })).toBeVisible()
@@ -104,6 +117,27 @@ test.describe('calendar item CRUD (#12–#15)', () => {
     await dragBy(page, item, 0, 90) // drag straight down within the same day
     // Same row (stable data-item-id), but the rendered time range must change.
     await expect(page.locator(`[data-item-id="${SEED.eventId}"]`)).not.toHaveText(before)
+  })
+
+  test('#13 Esc closes the editor, and a press outside closes it while unchanged', async ({ page }) => {
+    await page.locator(EVENT).first().dblclick()
+    const editor = page.getByRole('dialog', { name: /edit event/i })
+    await expect(editor).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(editor).toHaveCount(0)
+
+    await page.locator(EVENT).first().dblclick()
+    await expect(editor).toBeVisible()
+    await page.mouse.click(5, 5)
+    await expect(editor).toHaveCount(0)
+  })
+
+  test('#13 a press outside keeps an edited form open', async ({ page }) => {
+    await page.locator(EVENT).first().dblclick()
+    const editor = page.getByRole('dialog', { name: /edit event/i })
+    await editor.getByLabel('Title').fill('Changed title')
+    await page.mouse.click(5, 5)
+    await expect(editor).toBeVisible()
   })
 
   test('#15 single click opens the preview popover with quick actions', async ({ page }) => {

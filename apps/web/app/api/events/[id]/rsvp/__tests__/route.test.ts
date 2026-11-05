@@ -18,7 +18,14 @@ vi.mock('@/lib/auth/helpers', () => ({
   }),
 }))
 
+const respond = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/google/calendar', async (original) => ({
+  ...(await original<typeof import('@/lib/google/calendar')>()),
+  respondToGoogleEvent: respond,
+}))
+
 import { authenticate } from '@/lib/auth/helpers'
+import { NotAGuestError } from '@/lib/google/calendar'
 import type { AuthResult } from '@/lib/auth/helpers'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -86,66 +93,103 @@ function mockAuthWithTables(
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+const LOCAL = { data: { id: 'cal-local', source: 'local', google_account_id: null, google_calendar_id: null }, error: null }
+const GOOGLE = { data: { id: 'cal-work', source: 'google', google_account_id: 'acct-work', google_calendar_id: 'work@group.test' }, error: null }
+
 describe('POST /api/events/:id/rsvp', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('updates an existing attendee and returns the full event (API-key auth)', async () => {
-    const event = {
-      id: TEST_EVENT_ID,
-      attendees: [{ email: USER_EMAIL, response: 'needsAction' }],
-    }
-    const updatedEvent = {
-      id: TEST_EVENT_ID,
-      title: 'Standup',
-      user_id: TEST_USER_ID,
-      attendees: [{ email: USER_EMAIL, response: 'accepted' }],
-    }
-
+  it('keeps the answer on a local calendar, under the caller\'s profile email (API-key auth)', async () => {
+    const event = { id: TEST_EVENT_ID, calendar_id: 'cal-local', google_event_id: null, attendees: [{ email: USER_EMAIL, response_status: 'needsAction' }] }
+    const updatedEvent = { id: TEST_EVENT_ID, title: 'Standup', user_id: TEST_USER_ID, attendees: [{ email: USER_EMAIL, response_status: 'accepted' }] }
     const supabase = mockAuthWithTables({
-      events: [
-        { data: event, error: null },        // fetch event
-        { data: updatedEvent, error: null },  // update
-      ],
+      events: [{ data: event, error: null }, { data: updatedEvent, error: null }],
+      calendars: LOCAL,
       profiles: { data: { email: USER_EMAIL }, error: null },
     })
 
-    const req = createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'accepted' })
-    const res = await POST(req, routeParams(TEST_EVENT_ID))
+    const res = await POST(createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'accepted' }), routeParams(TEST_EVENT_ID))
     const body = await res.json()
 
     expect(res.status).toBe(200)
     // Full event object, not just { id, response }.
     expect(body.title).toBe('Standup')
-    expect(body.attendees[0].response).toBe('accepted')
+    const update = vi.mocked(supabase.from).mock.results[3]!.value.update as ReturnType<typeof vi.fn>
+    expect(update.mock.calls[0]![0].attendees).toEqual([{ email: USER_EMAIL, response_status: 'accepted' }])
+    expect(respond).not.toHaveBeenCalled()
     // Email came from profiles, never from auth.getUser.
     expect(supabase.from).toHaveBeenCalledWith('profiles')
     expect(supabase.auth.getUser).not.toHaveBeenCalled()
   })
 
-  it('appends the caller as an attendee when not already present', async () => {
-    const event = { id: TEST_EVENT_ID, attendees: [] }
-    const updatedEvent = {
-      id: TEST_EVENT_ID,
-      title: 'Planning',
-      attendees: [{ email: USER_EMAIL, response: 'declined' }],
-    }
-
-    mockAuthWithTables({
-      events: [
-        { data: event, error: null },
-        { data: updatedEvent, error: null },
-      ],
+  it('appends the caller as an attendee on a local calendar when not already present', async () => {
+    const supabase = mockAuthWithTables({
+      events: [{ data: { id: TEST_EVENT_ID, calendar_id: 'cal-local', attendees: [] }, error: null }, { data: { id: TEST_EVENT_ID }, error: null }],
+      calendars: LOCAL,
       profiles: { data: { email: USER_EMAIL }, error: null },
     })
 
-    const req = createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'declined' })
-    const res = await POST(req, routeParams(TEST_EVENT_ID))
-    const body = await res.json()
+    const res = await POST(createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'declined' }), routeParams(TEST_EVENT_ID))
 
     expect(res.status).toBe(200)
-    expect(body.attendees).toHaveLength(1)
-    expect(body.attendees[0].email).toBe(USER_EMAIL)
-    expect(body.attendees[0].response).toBe('declined')
+    const update = vi.mocked(supabase.from).mock.results[3]!.value.update as ReturnType<typeof vi.fn>
+    expect(update.mock.calls[0]![0].attendees).toEqual([{ email: USER_EMAIL, response_status: 'declined' }])
+  })
+
+  it('sends the reply to Google as the calendar\'s account and stores the guest list Google returns', async () => {
+    const event = { id: TEST_EVENT_ID, calendar_id: 'cal-work', google_event_id: 'kickoff', attendees: [] }
+    respond.mockResolvedValue({
+      id: 'kickoff',
+      etag: '"etag-9"',
+      attendees: [{ email: 'nate@work.test', responseStatus: 'tentative', self: true }, { email: 'boss@work.test', responseStatus: 'accepted' }],
+    })
+    const supabase = mockAuthWithTables({
+      events: [{ data: event, error: null }, { data: { id: TEST_EVENT_ID, title: 'Kickoff' }, error: null }],
+      calendars: GOOGLE,
+      google_accounts: { data: { email: 'nate@work.test' }, error: null },
+    })
+
+    const res = await POST(createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'tentative' }), routeParams(TEST_EVENT_ID))
+
+    expect(res.status).toBe(200)
+    expect(respond).toHaveBeenCalledWith('acct-work', 'work@group.test', 'kickoff', 'nate@work.test', 'tentative')
+    const update = vi.mocked(supabase.from).mock.results[3]!.value.update as ReturnType<typeof vi.fn>
+    expect(update.mock.calls[0]![0]).toEqual({
+      attendees: [
+        { email: 'nate@work.test', name: undefined, response_status: 'tentative', self: true },
+        { email: 'boss@work.test', name: undefined, response_status: 'accepted' },
+      ],
+      etag: '"etag-9"',
+    })
+    expect(supabase.from).not.toHaveBeenCalledWith('profiles')
+  })
+
+  it('says so when Google refuses the reply, and changes nothing here', async () => {
+    respond.mockRejectedValue(new Error('Google Calendar API error: 500'))
+    const supabase = mockAuthWithTables({
+      events: { data: { id: TEST_EVENT_ID, calendar_id: 'cal-work', google_event_id: 'kickoff', attendees: [] }, error: null },
+      calendars: GOOGLE,
+      google_accounts: { data: { email: 'nate@work.test' }, error: null },
+    })
+
+    const res = await POST(createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'declined' }), routeParams(TEST_EVENT_ID))
+
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toMatch(/Google/)
+    expect(vi.mocked(supabase.from).mock.calls.filter(([table]) => table === 'events')).toHaveLength(1)
+  })
+
+  it('refuses a reply from an account that is not a guest', async () => {
+    respond.mockRejectedValue(new NotAGuestError('not a guest'))
+    mockAuthWithTables({
+      events: { data: { id: TEST_EVENT_ID, calendar_id: 'cal-work', google_event_id: 'kickoff', attendees: [] }, error: null },
+      calendars: GOOGLE,
+      google_accounts: { data: { email: 'nate@work.test' }, error: null },
+    })
+
+    const res = await POST(createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'accepted' }), routeParams(TEST_EVENT_ID))
+
+    expect(res.status).toBe(422)
   })
 
   it('returns 404 when the event is not owned by the caller', async () => {
@@ -161,7 +205,7 @@ describe('POST /api/events/:id/rsvp', () => {
     expect(body.error).toBe('Event not found')
   })
 
-  it('returns 400 for an invalid response value', async () => {
+  it('returns 422 for an invalid response value', async () => {
     mockAuthWithTables({})
 
     const req = createRequest(`/api/events/${TEST_EVENT_ID}/rsvp`, { response: 'maybe' })

@@ -94,7 +94,7 @@ export function KanbanFilters({
           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-colors duration-150"
           style={{
             backgroundColor: filters.tagIds.length > 0
-              ? 'rgba(249, 168, 37, 0.1)'
+              ? 'color-mix(in srgb, var(--accent) 10%, transparent)'
               : 'var(--surface)',
             borderColor: filters.tagIds.length > 0
               ? 'var(--accent)'
@@ -108,7 +108,7 @@ export function KanbanFilters({
           {filters.tagIds.length > 0 && (
             <span
               className="px-1 rounded-sm text-xs font-medium"
-              style={{ backgroundColor: 'var(--accent)', color: '#000' }}
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--bg)' }}
             >
               {filters.tagIds.length}
             </span>
@@ -195,7 +195,7 @@ export function KanbanFilters({
           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-colors duration-150"
           style={{
             backgroundColor: filters.importanceLevels.length > 0
-              ? 'rgba(249, 168, 37, 0.1)'
+              ? 'color-mix(in srgb, var(--accent) 10%, transparent)'
               : 'var(--surface)',
             borderColor: filters.importanceLevels.length > 0
               ? 'var(--accent)'
@@ -209,7 +209,7 @@ export function KanbanFilters({
           {filters.importanceLevels.length > 0 && (
             <span
               className="px-1 rounded-sm text-xs font-medium"
-              style={{ backgroundColor: 'var(--accent)', color: '#000' }}
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--bg)' }}
             >
               {filters.importanceLevels.length}
             </span>

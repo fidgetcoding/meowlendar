@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, Circle, Settings2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import {
   format,
   startOfWeek,
@@ -150,88 +150,46 @@ export function CalendarHeader({
   })
 
   return (
-    <div
-      className={cn(
-        'flex items-center justify-between px-2 py-2 md:px-4 md:py-3',
-        'bg-[var(--surface)] border-b border-[var(--border)]',
-        'select-none'
-      )}
-    >
-      <div className="flex items-center gap-1.5 md:gap-3">
-        <span className="text-xs md:text-sm font-medium text-[var(--fg)]">
-          {formatPeriodContext(currentDate, view)}
-        </span>
-
-        <div className="flex items-center gap-0.5 md:gap-1">
-          <button
-            type="button"
-            onClick={onPrev}
-            aria-label="Previous"
-            className={cn(
-              'flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md',
-              'text-[var(--muted)] hover:text-[var(--fg)]',
-              'hover:bg-[var(--surface-hover)]',
-              'transition-colors duration-150'
-            )}
-          >
-            <ChevronLeft className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+    <div className="meow-hdr">
+      <div className="flex min-w-0 items-center gap-1.5 md:gap-2.5">
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onPrev} aria-label="Previous" className="meow-ib">
+            <ChevronLeft size={18} strokeWidth={1.6} />
           </button>
 
-          <button
-            type="button"
-            onClick={onToday}
-            aria-label="Go to today"
-            title="Go to today"
-            className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)] transition-colors duration-150"
-          >
-            <Circle className="w-3.5 h-3.5" strokeWidth={2.5} />
+          <button type="button" onClick={onToday} aria-label="Go to today" title="Go to today" className="meow-today">
+            Today
           </button>
 
-          <button
-            type="button"
-            onClick={onNext}
-            aria-label="Next"
-            className={cn(
-              'flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md',
-              'text-[var(--muted)] hover:text-[var(--fg)]',
-              'hover:bg-[var(--surface-hover)]',
-              'transition-colors duration-150'
-            )}
-          >
-            <ChevronRight className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+          <button type="button" onClick={onNext} aria-label="Next" className="meow-ib">
+            <ChevronRight size={18} strokeWidth={1.6} />
           </button>
         </div>
 
-        <h2 className="text-sm md:text-lg font-semibold text-[var(--fg)] truncate max-w-[140px] md:max-w-none">
-          {formatDateLabel(currentDate, view, customDays)}
-        </h2>
+        <h2 className="meow-hdr-dl">{formatDateLabel(currentDate, view, customDays)}</h2>
+
+        <span className="meow-hdr-ctx">{formatPeriodContext(currentDate, view)}</span>
       </div>
 
       <div className="flex items-center gap-1 md:gap-2">
-        {/* View selector dropdown -- hidden on mobile, icon only */}
+        {/* View selector dropdown -- hidden on mobile */}
         <Select
           options={options}
           value={selectValue}
           onChange={handleViewSelect}
           aria-label="Calendar view"
-          className="hidden md:block w-[140px]"
+          className="meow-hdr-view hidden md:block w-[118px]"
         />
 
-        {/* Display settings gear button */}
+        {/* Display settings */}
         <button
           ref={settingsButtonRef}
           type="button"
           onClick={() => setSettingsOpen((o) => !o)}
           aria-label="Display settings"
-          className={cn(
-            'flex items-center justify-center w-8 h-8 rounded-md',
-            'transition-colors duration-150',
-            settingsOpen
-              ? 'text-[var(--accent)] bg-[var(--surface-hover)]'
-              : 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-          )}
+          className={cn('meow-ib', settingsOpen && 'is-on')}
         >
-          <Settings2 size={18} />
+          <SlidersHorizontal size={18} strokeWidth={1.6} />
         </button>
 
         <Popover

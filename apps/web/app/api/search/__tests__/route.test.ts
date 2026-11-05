@@ -237,6 +237,27 @@ describe('GET /api/search', () => {
     expect(eventResults).toHaveLength(1)
   })
 
+  it('returns a meeting on two accounts once, and both with merge=false', async () => {
+    const copy = (id: string, calendar_id: string) => ({
+      id, calendar_id, ical_uid: 'kickoff@google.com', title: 'Kickoff', notes: null,
+      start_time: '2026-06-10T09:00:00Z', end_time: '2026-06-10T10:00:00Z', attendees: [],
+    })
+    const search = async (extra = '') => {
+      const factory = createSupabaseMock()
+      factory.setResult('events', { data: [copy('work', 'cal-work'), copy('home', 'cal-home')], error: null })
+      factory.setResult('events', { data: [], error: null })
+      factory.setResult('tasks', { data: [], error: null })
+      factory.setResult('tasks', { data: [], error: null })
+      factory.setResult('routines', { data: [], error: null })
+      factory.setResult('booking_links', { data: [], error: null })
+      mockAuthenticate.mockResolvedValue({ userId: 'user-123', supabase: factory.build() })
+      const { GET } = await import('../route')
+      return (await (await GET(makeSearchRequest('Kickoff', extra))).json()).items.map((r: { id: string }) => r.id)
+    }
+    expect(await search()).toEqual(['work'])
+    expect((await search('&merge=false')).sort()).toEqual(['home', 'work'])
+  })
+
   it('sorts results by date descending', async () => {
     const factory = createSupabaseMock()
     factory.setResult('events', {

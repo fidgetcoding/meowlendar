@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import type { PoolendarClient } from '@poolendar/api-client'
 import {
   getCalendarToolDefinitions,
   getEventToolDefinitions,
+  getEventToolHandlers,
+  getSearchToolHandlers,
   getTaskToolDefinitions,
   getSubtaskToolDefinitions,
   getRoutineToolDefinitions,
@@ -278,6 +281,15 @@ describe('MCP Tool Definitions', () => {
     it('accepts optional calendar_id', () => {
       expect(tool.inputSchema.properties).toHaveProperty('calendar_id')
     })
+
+    it('documents merged copies and passes merge through', async () => {
+      expect(tool.description).toContain('also_on')
+      expect((tool.inputSchema.properties.merge as Record<string, unknown>).type).toBe('boolean')
+      const listEvents = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
+      const handlers = getEventToolHandlers({ listEvents } as unknown as PoolendarClient)
+      await handlers.list_events!({ start: '2026-06-01T00:00:00Z', end: '2026-06-02T00:00:00Z', merge: false })
+      expect(listEvents).toHaveBeenCalledWith(expect.objectContaining({ merge: false }))
+    })
   })
 
   describe('search', () => {
@@ -295,6 +307,12 @@ describe('MCP Tool Definitions', () => {
       expect(tool.inputSchema.properties).toHaveProperty('types')
       const types = tool.inputSchema.properties.types as Record<string, unknown>
       expect(types.type).toBe('array')
+    })
+
+    it('passes merge through to the search', async () => {
+      const search = vi.fn().mockResolvedValue({ items: [], next_cursor: null })
+      await getSearchToolHandlers({ search } as unknown as PoolendarClient).search!({ query: 'kickoff', merge: false })
+      expect(search).toHaveBeenCalledWith('kickoff', undefined, undefined, { merge: false })
     })
   })
 

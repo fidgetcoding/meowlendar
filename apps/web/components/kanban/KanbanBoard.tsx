@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { useState, useMemo, useCallback } from 'react'
 import {
   DndContext,
@@ -30,6 +31,8 @@ import { PanelViewToggle } from '@/components/PanelViewToggle'
 const COLUMN_ORDER: TaskStatus[] = ['backlog', 'in_progress', 'check', 'done']
 
 interface KanbanBoardProps {
+  /** Rendered between the board header and the columns (the undo strip). */
+  belowHeader?: React.ReactNode
   tasks: Task[]
   tags: Tag[]
   onTaskMove: (
@@ -84,6 +87,7 @@ function resolveDropStatus(
 }
 
 export function KanbanBoard({
+  belowHeader,
   tasks,
   tags,
   onTaskMove,
@@ -257,12 +261,10 @@ export function KanbanBoard({
   }
 
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{ backgroundColor: 'var(--bg)' }}
-    >
-      {/* Header: board switcher + filters */}
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+    <div className="flex flex-col h-full bg-[var(--surf)]">
+      {/* Header: title, board switcher, filters */}
+      <div className="meow-bhdr">
+        <h2>Tasks</h2>
         <BoardSwitcher
           activeBoard={activeBoard}
           onBoardChange={setActiveBoard}
@@ -270,7 +272,7 @@ export function KanbanBoard({
           futureCount={futureCount}
         />
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <KanbanFilters
             tags={tags}
             filters={filters}
@@ -280,8 +282,10 @@ export function KanbanBoard({
         </div>
       </div>
 
+      {belowHeader}
+
       {/* Kanban columns */}
-      <div className="flex-1 overflow-x-auto p-4">
+      <div className="flex-1 min-h-0">
         <DndContext
           id="kanban-dnd"
           sensors={sensors}
@@ -289,7 +293,7 @@ export function KanbanBoard({
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 h-full min-w-max md:min-w-0 overflow-x-auto snap-x snap-mandatory md:snap-none">
+          <div className="meow-cols">
             {COLUMN_ORDER.map((status) => (
               <KanbanColumn
                 key={status}

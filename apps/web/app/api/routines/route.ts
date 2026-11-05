@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
 import { createRoutineSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
+import { alreadyCreated, clientIdOf, UNIQUE_VIOLATION } from '../../../lib/client-id'
 
 export async function GET(request: NextRequest) {
   const auth = await authenticate(request)
@@ -50,9 +51,17 @@ export async function POST(request: NextRequest) {
 
   const input = parsed.data
 
+  // The same create sent twice (the page resends it while unloading) makes one row.
+  const clientId = clientIdOf(body)
+  if (clientId) {
+    const already = await alreadyCreated(supabase, 'routines', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
+
   const { data, error } = await supabase
     .from('routines')
     .insert({
+      ...(clientId ? { id: clientId } : {}),
       user_id: userId,
       calendar_id: input.calendar_id ?? null,
       title: input.title,
@@ -69,6 +78,10 @@ export async function POST(request: NextRequest) {
     .select()
     .single()
 
+  if (error?.code === UNIQUE_VIOLATION && clientId) {
+    const already = await alreadyCreated(supabase, 'routines', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
   if (error || !data) {
     return NextResponse.json(
       { error: 'Failed to create routine' },

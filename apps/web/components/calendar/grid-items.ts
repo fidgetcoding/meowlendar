@@ -3,7 +3,7 @@ import type { CalendarEvent, Task, Routine, RoutineInstance, Calendar } from '@p
 import type { CalendarItemData } from './calendar-types'
 import { expandOccurrences, occurrenceItemId, routineOccursOn, dateInZone, wallClockToInstant } from '@/lib/recurrence'
 
-const FALLBACK_COLOR = '#f9a825'
+const FALLBACK_COLOR = '#e8930c'
 
 // All-day timestamps encode calendar dates, not instants in the viewer's zone.
 function gridDate(iso: string, allDay: boolean): Date {
@@ -112,6 +112,9 @@ export function routinesToItems(
       const startTime = wallClockToInstant(date, routine.start_time.split('T').pop()!, routine.timezone)
       const endTime = wallClockToInstant(date, routine.end_time.split('T').pop()!, routine.timezone)
       if (!visibleDates.has(format(startTime, 'yyyy-MM-dd'))) continue
+      // A skipped day is gone from the grid, like an event's deleted occurrence.
+      const instance = byDate.get(`${routine.id}-${date}`)
+      if (instance?.status === 'skipped') continue
 
       items.push({
         id: `${routine.id}-${date}`,
@@ -122,7 +125,7 @@ export function routinesToItems(
         color: getCalendarColor(calendars, routine.calendar_id, null),
         location: routine.location,
         routine,
-        routineInstanceStatus: byDate.get(`${routine.id}-${date}`)?.status,
+        routineInstanceStatus: instance?.status,
       })
     }
   }

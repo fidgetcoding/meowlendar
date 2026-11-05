@@ -4,25 +4,38 @@ import * as React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  CheckCircle2,
-  Circle,
   Calendar,
   Clock,
   GripVertical,
   ChevronRight,
+  ListChecks,
 } from 'lucide-react'
-import type { Task, TaskImportance } from '@poolendar/types'
-import { isToday, isPast, format, parseISO } from 'date-fns'
+import type { Task } from '@poolendar/types'
+import { isToday, format, parseISO } from 'date-fns'
+import { cn } from '@/lib/utils'
+import { toDueDay } from '@/lib/tasks/grouping'
+import { isAgentTask } from '@/lib/tasks/agent'
+import { AgentLabel, DonePaw, PriorityCat, PRIORITY_COATS } from '@/components/brand/cats'
+import { IMPORTANCE_PILL } from './importance'
 
-const IMPORTANCE_CONFIG: Record<
-  TaskImportance,
-  { color: string; label: string }
-> = {
-  highest: { color: '#ef4444', label: 'Highest' },
-  high: { color: '#f97316', label: 'High' },
-  normal: { color: 'var(--muted)', label: 'Normal' },
-  low: { color: '#6b7280', label: 'Low' },
-  lowest: { color: '#4b5563', label: 'Lowest' },
+// Where the priority cat sits on the frame, picked from the task id so it stays put as cards move.
+const CAT_SPOTS: React.CSSProperties[] = [
+  { right: 18 }, { left: '44%' }, { right: 30 }, { left: '32%' },
+  { right: 22 }, { left: '56%' }, { right: 40 }, { left: '38%' },
+]
+
+function catSpot(id: string): React.CSSProperties {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return CAT_SPOTS[h % CAT_SPOTS.length]!
+}
+
+function formatTimeEstimate(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remaining = minutes % 60
+  if (remaining === 0) return `${hours}h`
+  return `${hours}h ${remaining}m`
 }
 
 interface TaskCardProps {
@@ -59,42 +72,25 @@ export const TaskCard = React.memo(function TaskCard({
   const subtaskProgress =
     subtasksTotal > 0 ? (subtasksDone / subtasksTotal) * 100 : 0
 
-  const hasSchedule = Boolean(task.scheduled_start && task.scheduled_end)
-  const hasTimeEstimate = Boolean(task.time_estimate_minutes)
   const tags = task.tags ?? []
+  const isAgent = isAgentTask(task)
+  const hasCat = PRIORITY_COATS[task.importance] !== null
+  const pill = IMPORTANCE_PILL[task.importance]
 
-  function getDueDateInfo(): {
-    text: string
-    color: string
-  } | null {
+  function getDueDateInfo(): { text: string; tone: 'over' | 'today' | null } | null {
     if (!task.due_date) return null
-    const date = parseISO(task.due_date)
-    if (isPast(date) && !isToday(date)) {
-      return { text: format(date, 'MMM d'), color: 'var(--destructive)' }
-    }
-    if (isToday(date)) {
-      return { text: 'Today', color: 'var(--accent)' }
-    }
-    return { text: format(date, 'MMM d'), color: 'var(--muted)' }
-  }
-
-  function formatTimeEstimate(minutes: number): string {
-    if (minutes < 60) return `${minutes}m`
-    const hours = Math.floor(minutes / 60)
-    const remaining = minutes % 60
-    if (remaining === 0) return `${hours}h`
-    return `${hours}h ${remaining}m`
+    const date = toDueDay(task.due_date)
+    if (isToday(date)) return { text: 'Today', tone: 'today' }
+    if (date < new Date() && !isCompleted) return { text: 'Overdue', tone: 'over' }
+    return { text: format(date, 'MMM d'), tone: null }
   }
 
   const dueInfo = getDueDateInfo()
-  const importanceCfg = IMPORTANCE_CONFIG[task.importance]
 
   const cardStyle: React.CSSProperties = {
     transform: transformStyle ?? undefined,
     transition: transition ?? undefined,
     opacity: isDragging ? 0.3 : 1,
-    backgroundColor: 'var(--surface)',
-    borderColor: 'var(--border)',
   }
 
   return (
@@ -103,7 +99,7 @@ export const TaskCard = React.memo(function TaskCard({
       style={cardStyle}
       data-task-card
       data-task-id={task.id}
-      className="group rounded-lg border p-3 cursor-pointer transition-all duration-150 hover:border-[color:var(--accent)]/30 hover:shadow-md"
+      className={cn('meow-card group', isCompleted && 'is-done', isAgent && 'is-agent', hasCat && 'has-cat')}
       onClick={() => onTaskClick(task)}
       role="button"
       tabIndex={0}
@@ -114,168 +110,105 @@ export const TaskCard = React.memo(function TaskCard({
         }
       }}
     >
-      {/* Top row: drag handle + checkbox + title */}
-      <div className="flex items-start gap-2">
-        {!isDragOverlay && (
-          <div
-            className="shrink-0 mt-0.5 cursor-grab opacity-0 group-hover:opacity-40 transition-opacity duration-150"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical size={14} style={{ color: 'var(--muted)' }} />
-          </div>
-        )}
+      {hasCat && (
+        <div className="meow-sit" style={catSpot(task.id)} aria-hidden="true">
+          <PriorityCat importance={task.importance} />
+        </div>
+      )}
 
+      {!isDragOverlay && (
+        <div className="meow-grip cursor-grab" {...attributes} {...listeners}>
+          <GripVertical size={14} />
+        </div>
+      )}
+
+      {/* Title row: check square (green paw when done) + title */}
+      <div className="meow-card-ttl">
         <button
           type="button"
-          className="shrink-0 mt-0.5"
+          className="meow-ck"
+          aria-label={isCompleted ? 'Reopen task' : 'Complete task'}
           onClick={(e) => {
             e.stopPropagation()
             onTaskComplete(task.id)
           }}
         >
-          {isCompleted ? (
-            <CheckCircle2
-              size={16}
-              style={{ color: 'var(--success)' }}
-            />
-          ) : (
-            <Circle
-              size={16}
-              style={{ color: 'var(--muted)' }}
-              className="hover:text-[color:var(--accent)] transition-colors duration-150"
-            />
-          )}
+          {isCompleted && <DonePaw />}
         </button>
 
         <div className="flex-1 min-w-0">
-          <p
-            className="text-sm font-medium leading-snug truncate"
-            style={{
-              color: isCompleted ? 'var(--muted)' : 'var(--fg)',
-              textDecoration: isCompleted ? 'line-through' : 'none',
-            }}
-          >
-            {task.title}
-          </p>
+          <p>{task.title}</p>
 
           {/* Description preview (#40) — truncated to two lines */}
-          {task.notes && (
-            <p
-              className="mt-0.5 text-xs leading-snug line-clamp-2"
-              style={{ color: 'var(--muted)' }}
-            >
-              {task.notes}
-            </p>
-          )}
+          {task.notes && <p className="meow-card-notes">{task.notes}</p>}
         </div>
       </div>
 
-      {/* Parent breadcrumb badge */}
+      {/* Parent breadcrumb */}
       {parentTitle && (
-        <div className="mt-2 ml-8">
-          <span
-            className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded"
-            style={{
-              backgroundColor: 'rgba(249, 168, 37, 0.08)',
-              color: 'var(--accent)',
-            }}
-          >
-            <ChevronRight size={10} />
-            <span className="truncate max-w-[140px]">{parentTitle}</span>
+        <div className="meow-card-meta">
+          <span className="meow-pill">
+            <ChevronRight size={12} />
+            <span className="truncate max-w-[160px]">{parentTitle}</span>
           </span>
         </div>
       )}
 
-      {/* Metadata row: importance badge + due date + schedule + time estimate */}
-      <div className="flex items-center gap-2 mt-2 ml-8 flex-wrap">
-        {task.importance !== 'normal' && (
-          <span
-            className="text-xs px-1.5 py-0.5 rounded font-medium"
-            style={{
-              backgroundColor: `${importanceCfg.color}18`,
-              color: importanceCfg.color,
-            }}
-          >
-            {importanceCfg.label}
-          </span>
-        )}
+      {/* Importance, due date, estimate, schedule */}
+      <div className="meow-card-meta">
+        <span className={cn('meow-pill is-imp', `is-${task.importance}`)} style={{ '--ic': pill.color } as React.CSSProperties}>
+          {pill.label}
+        </span>
 
         {dueInfo && (
-          <span className="text-xs flex items-center gap-1" style={{ color: dueInfo.color }}>
-            <Calendar size={10} />
+          <span className={cn('meow-pill', dueInfo.tone === 'over' && 'is-over', dueInfo.tone === 'today' && 'is-today')}>
+            <Calendar size={12} />
             {dueInfo.text}
           </span>
         )}
 
-        {hasSchedule && (
-          <span
-            className="text-xs flex items-center gap-1"
-            style={{ color: 'var(--muted)' }}
-          >
-            <Calendar size={10} />
-            Scheduled
-          </span>
-        )}
-
-        {hasTimeEstimate && task.time_estimate_minutes && (
-          <span
-            className="text-xs flex items-center gap-1"
-            style={{ color: 'var(--muted)' }}
-          >
-            <Clock size={10} />
+        {task.time_estimate_minutes ? (
+          <span className="meow-pill">
+            <Clock size={12} />
             {formatTimeEstimate(task.time_estimate_minutes)}
+          </span>
+        ) : null}
+
+        {task.scheduled_start && task.scheduled_end && (
+          <span className="meow-pill">
+            <ChevronRight size={12} />
+            {format(parseISO(task.scheduled_start), 'EEE h:mm a')}
           </span>
         )}
       </div>
 
-      {/* Tags */}
+      {/* Subtask progress */}
+      {hasSubtasks && (
+        <div className="meow-subt">
+          <ListChecks size={14} strokeWidth={1.6} />
+          <span className="tabular-nums">
+            {subtasksDone}/{subtasksTotal}
+          </span>
+          <span className="meow-subt-bar">
+            <i style={{ width: `${subtaskProgress}%` }} />
+          </span>
+        </div>
+      )}
+
+      {/* Tags: dot + name */}
       {tags.length > 0 && (
-        <div className="flex items-center gap-1.5 mt-2 ml-8 flex-wrap">
+        <div className="meow-card-meta">
           {tags.map((tag) => (
-            <span
-              key={tag.id}
-              className="text-xs px-1.5 py-0.5 rounded-full"
-              style={{
-                backgroundColor: `${tag.color}22`,
-                color: tag.color,
-              }}
-            >
+            <span key={tag.id} className="meow-tag" style={{ '--tc': tag.color } as React.CSSProperties}>
               {tag.prefix ? `${tag.prefix} ${tag.name}` : tag.name}
             </span>
           ))}
         </div>
       )}
 
-      {/* Subtask progress bar */}
-      {hasSubtasks && (
-        <div className="flex items-center gap-2 mt-2.5 ml-8">
-          <div
-            className="flex-1 h-1.5 rounded-full overflow-hidden"
-            style={{ backgroundColor: 'var(--border)' }}
-          >
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${subtaskProgress}%`,
-                backgroundColor:
-                  subtasksDone === subtasksTotal
-                    ? 'var(--success)'
-                    : 'var(--accent)',
-              }}
-            />
-          </div>
-          <span
-            className="text-xs shrink-0 tabular-nums"
-            style={{
-              color:
-                subtasksDone === subtasksTotal
-                  ? 'var(--success)'
-                  : 'var(--muted)',
-            }}
-          >
-            {subtasksDone}/{subtasksTotal}
-          </span>
+      {isAgent && (
+        <div>
+          <AgentLabel />
         </div>
       )}
     </div>

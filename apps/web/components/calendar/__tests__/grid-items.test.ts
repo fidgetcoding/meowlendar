@@ -41,3 +41,11 @@ it('restores saved completion on the routine host date after a reload', () => {
   const items = routinesToItems([routine], [new Date(2030, 0, 7)], [], [saved])
   expect(items.find(item => item.id === 'routine-2030-01-07')?.routineInstanceStatus).toBe('completed')
 })
+
+it('leaves a skipped routine occurrence off the grid, like an event exception', () => {
+  // "Delete only this occurrence" skips the date; the occurrence must disappear, not linger.
+  const routine = { id: 'routine', title: 'Morning', timezone: 'UTC', start_time: '09:00', end_time: '10:00', recurrence_rule: 'FREQ=DAILY', created_at: '2029-01-01T00:00:00Z' } as Routine
+  const skipped = { routine_id: 'routine', date: '2030-01-07', status: 'skipped' } as RoutineInstance
+  const items = routinesToItems([routine], [new Date(2030, 0, 7), new Date(2030, 0, 8)], [], [skipped])
+  expect(items.map((item) => item.id)).toEqual(['routine-2030-01-08'])
+})

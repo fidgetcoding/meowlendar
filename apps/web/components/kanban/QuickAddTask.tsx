@@ -178,7 +178,7 @@ export function QuickAddTask({ status, onCreateTask, startOpen = false, onClose 
           className="text-xs px-3 py-1 rounded-md font-medium transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
             backgroundColor: 'var(--accent)',
-            color: '#000',
+            color: 'var(--bg)',
           }}
           onMouseEnter={(e) => {
             if (!e.currentTarget.disabled) {

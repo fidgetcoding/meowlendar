@@ -1,32 +1,45 @@
 'use client'
 
 import * as React from 'react'
-import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
-import {
-  X,
-  MapPin,
-  Globe,
-  Lock,
-  Zap,
-  Eye,
-  Link2,
-  Plus,
-} from 'lucide-react'
+import { ChevronDown, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Calendar, Tag } from '@poolendar/types'
-import { SubtaskList } from './SubtaskList'
-import { RecurrenceBuilder } from './RecurrenceBuilder'
-import { ReminderEditor } from './ReminderEditor'
+import type { AnchorRect } from '@/lib/stores/ui-store'
 import { RecurrenceEditDialog, type RecurrenceEditScope } from './RecurrenceEditDialog'
 import {
-  IMPORTANCE_OPTIONS,
   safeFormatDate,
-  fieldClass,
-  SectionDivider,
-  FieldLabel,
-  ToggleGroup,
+  localInstant,
+  allDayInstant,
+  allDayDate,
+  allDayLastDate,
+  shiftDate,
 } from './item-edit-form-parts'
+import { EditPopover } from './edit/EditPopover'
+import { AlsoOnLine } from './EventCopies'
+import {
+  AttendeesRow,
+  BlockLine,
+  ConferencingRow,
+  DateTimeLine,
+  EstimateLine,
+  ImportanceRow,
+  LocationRow,
+  RepeatLine,
+  Row,
+  SettingsRow,
+  SubtasksRow,
+  TagsRow,
+  TimeZoneLine,
+} from './edit/EditFormSections'
+
+/** "HH:mm" from a routine time ("08:00", "08:00:00") or a full timestamp; else the fallback. */
+function wallTime(value: string | undefined, fallback: string): string {
+  if (!value) return fallback
+  if (/^\d{2}:\d{2}/.test(value)) return value.slice(0, 5)
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? fallback : format(d, 'HH:mm')
+}
 
 type EditItemType = 'event' | 'task' | 'routine'
 
@@ -74,6 +87,12 @@ interface ItemEditFormProps {
   onSplit?: () => void
   /** Pre-selected recurrence scope from the preview popover dialog */
   recurrenceScope?: RecurrenceEditScope
+  /** The slot or item to open beside (see EditPopover). */
+  anchor?: AnchorRect | null
+  /** Without an anchor, the grid item to find and open beside. */
+  anchorItemId?: string | null
+  /** The other calendars this meeting is on. */
+  alsoOn?: string[]
 }
 
 export type ItemEditFormInitialData = NonNullable<ItemEditFormProps['initialData']>
@@ -96,9 +115,11 @@ export function ItemEditForm({
   onClose,
   onSplit,
   recurrenceScope,
+  anchor = null,
+  anchorItemId = null,
+  alsoOn = [],
 }: ItemEditFormProps) {
   const [activeTab, setActiveTab] = React.useState<EditItemType>(initialType)
-  const [isMounted, setIsMounted] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
 
   // Track whether the item being edited is recurring
@@ -111,25 +132,43 @@ export function ItemEditForm({
   const [calendarId, setCalendarId] = React.useState(
     initialData?.calendar_id ?? calendars.find((c) => c.is_primary)?.id ?? calendars[0]?.id ?? ''
   )
-  const [visibility, setVisibility] = React.useState(initialData?.visibility ?? 'busy')
+  // A new all-day event shows as free and a timed one as busy, as Google does, until the user
+  // picks busy or free themselves. An existing event keeps whatever it had.
+  const [visibility, setVisibilityState] = React.useState(
+    initialData?.visibility ?? (mode === 'create' && initialData?.is_all_day ? 'free' : 'busy'),
+  )
+  const visibilityChosen = React.useRef(Boolean(initialData?.visibility) || mode === 'edit')
+  const setVisibility = (v: 'busy' | 'free') => {
+    visibilityChosen.current = true
+    setVisibilityState(v)
+  }
   const [privacy, setPrivacy] = React.useState(initialData?.privacy ?? 'public')
   const [reminders, setReminders] = React.useState<{ minutes_before: number }[]>(
     initialData?.reminders ?? []
   )
 
-  // Event fields
+  // Event fields. The form shows and reads times in the viewer's own zone; an event keeps the zone
+  // it was made in, and a new one takes the viewer's.
+  const viewZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const timeZone = initialData?.timezone ?? viewZone
   const [isAllDay, setIsAllDay] = React.useState(initialData?.is_all_day ?? false)
   const [startDate, setStartDate] = React.useState(
-    safeFormatDate(initialData?.start_time, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd'))
+    initialData?.is_all_day
+      ? allDayDate(initialData.start_time, format(new Date(), 'yyyy-MM-dd'))
+      : safeFormatDate(initialData?.start_time, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd'))
   )
+  // An all-day item has no time of day; switching it to timed starts from the defaults.
   const [startTime, setStartTime] = React.useState(
-    safeFormatDate(initialData?.start_time, 'HH:mm', '09:00')
+    initialData?.is_all_day ? '09:00' : safeFormatDate(initialData?.start_time, 'HH:mm', '09:00')
   )
-  const [endDate, setEndDate] = React.useState(
-    safeFormatDate(initialData?.end_time, 'yyyy-MM-dd', format(new Date(), 'yyyy-MM-dd'))
-  )
+  const [endDate, setEndDate] = React.useState(() => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    if (!initialData?.is_all_day) return safeFormatDate(initialData?.end_time, 'yyyy-MM-dd', today)
+    const start = allDayDate(initialData.start_time, today)
+    return allDayLastDate(start, allDayDate(initialData.end_time, start))
+  })
   const [endTime, setEndTime] = React.useState(
-    safeFormatDate(initialData?.end_time, 'HH:mm', '10:00')
+    initialData?.is_all_day ? '10:00' : safeFormatDate(initialData?.end_time, 'HH:mm', '10:00')
   )
   const [recurrenceRule, setRecurrenceRule] = React.useState<string | null>(
     initialData?.recurrence_rule ?? null
@@ -181,21 +220,13 @@ export function ItemEditForm({
   )
 
   // Routine fields
+  // A routine's own times are "HH:mm"; a slot handed in for a new item is a full timestamp.
   const [routineStartTime, setRoutineStartTime] = React.useState(
-    initialData?.start_time?.includes(':')
-      ? initialData.start_time.slice(0, 5)
-      : '09:00'
+    wallTime(initialData?.start_time, '09:00')
   )
   const [routineEndTime, setRoutineEndTime] = React.useState(
-    initialData?.end_time?.includes(':')
-      ? initialData.end_time.slice(0, 5)
-      : '10:00'
+    wallTime(initialData?.end_time, '10:00')
   )
-
-  React.useEffect(() => {
-    setIsMounted(true)
-    return () => setIsMounted(false)
-  }, [])
 
   function addAttendee() {
     const email = newAttendee.trim()
@@ -227,7 +258,8 @@ export function ItemEditForm({
     return isNaN(n) ? null : n
   }
 
-  function handleSave() {
+  /** What Save would send for the open tab. */
+  function buildPayload(): { type: EditItemType; data: Record<string, unknown> } {
     const shared: Record<string, unknown> = {
       title,
       notes: notes || null,
@@ -239,17 +271,22 @@ export function ItemEditForm({
     }
 
     if (activeTab === 'event') {
-      onSave('event', {
+      return { type: 'event', data: {
         ...shared,
         is_all_day: isAllDay,
-        start_time: `${startDate}T${startTime}:00`,
-        end_time: `${endDate}T${endTime}:00`,
+        start_time: isAllDay ? allDayInstant(startDate) : localInstant(startDate, startTime),
+        // All-day: the end is exclusive (the day after the last), so one day is never zero length.
+        end_time: isAllDay
+          ? allDayInstant(shiftDate(endDate < startDate ? startDate : endDate, 1))
+          : localInstant(endDate, endTime),
+        timezone: timeZone,
         recurrence_rule: recurrenceRule,
         conferencing_url: conferencingUrl || null,
         attendees: attendeeEmails.map((email) => ({ email, response_status: 'needsAction' })),
-      }, recurrenceScope)
-    } else if (activeTab === 'task') {
-      onSave('task', {
+      } }
+    }
+    if (activeTab === 'task') {
+      return { type: 'task', data: {
         ...shared,
         importance,
         time_estimate_minutes: parseTimeEstimateMinutes(timeEstimate),
@@ -257,23 +294,60 @@ export function ItemEditForm({
         earliest_start: earliestStart || null,
         scheduled_start:
           scheduledStartDate && scheduledStartTime
-            ? `${scheduledStartDate}T${scheduledStartTime}:00`
+            ? localInstant(scheduledStartDate, scheduledStartTime)
             : null,
         scheduled_end:
           scheduledEndDate && scheduledEndTime
-            ? `${scheduledEndDate}T${scheduledEndTime}:00`
+            ? localInstant(scheduledEndDate, scheduledEndTime)
             : null,
         subtasks,
         tags: selectedTags.map((t) => t.id),
-      }, recurrenceScope)
-    } else {
-      onSave('routine', {
-        ...shared,
-        start_time: routineStartTime,
-        end_time: routineEndTime,
-        recurrence_rule: recurrenceRule ?? 'FREQ=DAILY',
-      }, recurrenceScope)
+      } }
     }
+    return { type: 'routine', data: {
+      ...shared,
+      start_time: routineStartTime,
+      end_time: routineEndTime,
+      recurrence_rule: recurrenceRule ?? 'FREQ=DAILY',
+    } }
+  }
+
+  function handleSave() {
+    if (!title.trim()) return
+    const { type, data } = buildPayload()
+    onSave(type, data, recurrenceScope)
+  }
+
+  // The form as it opened. A press outside closes it only while nothing has changed since.
+  const snapshot = (p: ReturnType<typeof buildPayload>) => JSON.stringify([p.type, p.data, newAttendee])
+  const openedAs = React.useRef<string | null>(null)
+  if (openedAs.current === null) openedAs.current = snapshot(buildPayload())
+  function handleOutsidePress() {
+    if (deleteDialogOpen) return
+    if (snapshot(buildPayload()) === openedAs.current) onClose()
+  }
+
+  /** Switching kind keeps the title, and carries the time over so the item stays where it was. */
+  function switchTab(next: EditItemType) {
+    if (next === activeTab) return
+    const from = activeTab === 'task' && scheduledStartDate && scheduledStartTime
+      ? { date: scheduledStartDate, start: scheduledStartTime, endDate: scheduledEndDate || scheduledStartDate, end: scheduledEndTime || scheduledStartTime }
+      : activeTab === 'routine'
+        ? { date: startDate, start: routineStartTime, endDate: startDate, end: routineEndTime }
+        : activeTab === 'event' && !isAllDay
+          ? { date: startDate, start: startTime, endDate, end: endTime }
+          : null
+    if (from) {
+      if (next === 'event') {
+        setStartDate(from.date); setStartTime(from.start); setEndDate(from.endDate); setEndTime(from.end)
+      } else if (next === 'task') {
+        setScheduledStartDate(from.date); setScheduledStartTime(from.start)
+        setScheduledEndDate(from.endDate); setScheduledEndTime(from.end)
+      } else {
+        setRoutineStartTime(from.start); setRoutineEndTime(from.end)
+      }
+    }
+    setActiveTab(next)
   }
 
   // ⌘Enter saves the open form, Esc discards it (#71). A ref keeps the latest
@@ -307,637 +381,170 @@ export function ItemEditForm({
     onDelete?.(scope)
   }
 
-  if (!isMounted) return null
+  // The title takes focus once the card is on the page; on a new item its text is selected so
+  // typing replaces it.
+  const focused = React.useRef(false)
+  const titleRef = React.useCallback((input: HTMLInputElement | null) => {
+    if (!input || focused.current) return
+    focused.current = true
+    input.focus({ preventScroll: true })
+    if (mode === 'create') input.select()
+  }, [mode])
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
+  const calendar = calendars.find((c) => c.id === calendarId)
+  const kindLabel = activeTab === 'event' ? 'event' : activeTab === 'task' ? 'task' : 'routine'
+  const settings = (
+    <SettingsRow
+      reminders={reminders}
+      onReminders={setReminders}
+      visibility={visibility as 'busy' | 'free'}
+      onVisibility={setVisibility}
+      privacy={privacy as 'public' | 'private'}
+      onPrivacy={setPrivacy}
+    />
+  )
 
-      {/* Panel */}
-      <div
-        className={cn(
-          'relative w-full max-w-[480px] h-full',
-          'bg-[var(--surface)] border-l border-[var(--border)]',
-          'flex flex-col',
-          'animate-in slide-in-from-right duration-200'
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-          <div className="flex items-center gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setActiveTab(tab.value)}
-                className={cn(
-                  'relative px-4 py-1.5 text-sm font-medium rounded-md',
-                  'transition-colors duration-150',
-                  activeTab === tab.value
-                    ? 'text-[var(--accent)]'
-                    : 'text-[var(--muted)] hover:text-[var(--fg)]'
-                )}
-              >
-                {tab.label}
-                {activeTab === tab.value && (
-                  <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[var(--accent)] rounded-full" />
-                )}
-              </button>
+  return (
+    <EditPopover
+      anchor={anchor}
+      anchorItemId={anchorItemId}
+      label={mode === 'create' ? `New ${kindLabel}` : `Edit ${kindLabel}`}
+      onOutsidePress={handleOutsidePress}
+    >
+      {/* Calendar on the left, the kind of item on the right */}
+      <div className="meow-ef-top">
+        <label className="meow-ef-cal">
+          <span className="meow-ef-dot" style={{ background: calendar?.color ?? 'var(--peri)' }} aria-hidden="true" />
+          <span className="truncate">{calendar?.name ?? 'Calendar'}</span>
+          {calendars.length > 1 && <ChevronDown size={13} aria-hidden="true" />}
+          <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)} aria-label="Calendar">
+            {calendars.map((cal) => (
+              <option key={cal.id} value={cal.id}>{cal.name}</option>
             ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className={cn(
-              'flex items-center justify-center w-8 h-8 rounded-md',
-              'text-[var(--muted)] hover:text-[var(--fg)]',
-              'hover:bg-[var(--surface-hover)]',
-              'transition-colors duration-150'
-            )}
-          >
-            <X size={18} />
-          </button>
+          </select>
+        </label>
+        <div className="meow-ef-tabs" role="group" aria-label="Kind">
+          {TABS.map((tab) => (
+            <button key={tab.value} type="button" onClick={() => switchTab(tab.value)} aria-pressed={activeTab === tab.value} className={cn(activeTab === tab.value && 'is-on')}>
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
+      <AlsoOnLine labels={alsoOn} className="flex-none px-4 pb-1" />
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {/* Title */}
-          <div>
-            <FieldLabel>Title</FieldLabel>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Add title"
-              className={fieldClass()}
-              autoFocus
-            />
-          </div>
+      <div className="meow-ef-body">
+        <input
+          ref={titleRef}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter in the title saves, as in the quick-add bubble (not while composing text).
+            // Cmd/Ctrl+Enter is the form-wide shortcut, handled once below.
+            if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              handleSave()
+            }
+          }}
+          placeholder="Add title"
+          aria-label="Title"
+          className="meow-ef-title"
+        />
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Add notes"
+          aria-label="Notes"
+          rows={2}
+          className="meow-ef-notes"
+        />
 
-          {/* Notes */}
-          <div>
-            <FieldLabel>Notes</FieldLabel>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes..."
-              rows={3}
-              className={fieldClass('resize-none')}
-            />
-          </div>
-
-          {/* Calendar selector */}
-          <div>
-            <FieldLabel>Calendar</FieldLabel>
-            <select
-              value={calendarId}
-              onChange={(e) => setCalendarId(e.target.value)}
-              className={fieldClass()}
-            >
-              {calendars.map((cal) => (
-                <option key={cal.id} value={cal.id}>
-                  {cal.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <SectionDivider />
-
-          {/* EVENT TAB */}
-          {activeTab === 'event' && (
-            <>
-              {/* All-day toggle */}
-              <div className="flex items-center justify-between">
-                <FieldLabel>All day</FieldLabel>
-                <button
-                  type="button"
-                  onClick={() => setIsAllDay(!isAllDay)}
-                  className={cn(
-                    'relative w-10 h-5 rounded-full transition-colors duration-200',
-                    isAllDay ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200',
-                      isAllDay ? 'translate-x-5' : 'translate-x-0.5'
-                    )}
-                  />
-                </button>
-              </div>
-
-              {/* Start date/time */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Start date</FieldLabel>
+        {activeTab === 'event' && (
+          <>
+            <AttendeesRow emails={attendeeEmails} draft={newAttendee} onDraft={setNewAttendee} onAdd={addAttendee} onRemove={removeAttendee} />
+            <Row icon={Clock}>
+              <div className="meow-ef-block">
+                <BlockLine label="All day" htmlFor="ef-allday">
                   <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-                {!isAllDay && (
-                  <div>
-                    <FieldLabel>Start time</FieldLabel>
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className={fieldClass()}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* End date/time */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>End date</FieldLabel>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-                {!isAllDay && (
-                  <div>
-                    <FieldLabel>End time</FieldLabel>
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className={fieldClass()}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <SectionDivider />
-
-              {/* Recurrence */}
-              <RecurrenceBuilder value={recurrenceRule} onChange={setRecurrenceRule} />
-
-              <SectionDivider />
-
-              {/* Location */}
-              <div>
-                <FieldLabel>Location</FieldLabel>
-                <div className="relative">
-                  <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Add location"
-                    className={fieldClass('pl-9')}
-                  />
-                </div>
-              </div>
-
-              {/* Conferencing */}
-              <div>
-                <FieldLabel>Conferencing URL</FieldLabel>
-                <div className="relative">
-                  <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="url"
-                    value={conferencingUrl}
-                    onChange={(e) => setConferencingUrl(e.target.value)}
-                    placeholder="Google Meet or Zoom link"
-                    className={fieldClass('pl-9')}
-                  />
-                </div>
-              </div>
-
-              <SectionDivider />
-
-              {/* Attendees */}
-              <div>
-                <FieldLabel>Attendees</FieldLabel>
-                {attendeeEmails.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {attendeeEmails.map((email) => (
-                      <span
-                        key={email}
-                        className={cn(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs',
-                          'bg-[var(--bg)] border border-[var(--border)] text-[var(--fg)]'
-                        )}
-                      >
-                        {email}
-                        <button
-                          type="button"
-                          onClick={() => removeAttendee(email)}
-                          className="text-[var(--muted)] hover:text-[var(--destructive)]"
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={newAttendee}
-                    onChange={(e) => setNewAttendee(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        addAttendee()
-                      }
+                    id="ef-allday"
+                    type="checkbox"
+                    checked={isAllDay}
+                    onChange={(e) => {
+                      setIsAllDay(e.target.checked)
+                      if (!visibilityChosen.current) setVisibilityState(e.target.checked ? 'free' : 'busy')
                     }}
-                    placeholder="Add email"
-                    className={fieldClass('flex-1')}
+                    aria-label="All day"
+                    className="meow-ef-check"
                   />
-                  <button
-                    type="button"
-                    onClick={addAttendee}
-                    className={cn(
-                      'flex items-center gap-1 px-3 py-2 rounded-md text-sm',
-                      'border border-[var(--border)] text-[var(--muted)]',
-                      'hover:text-[var(--fg)] hover:border-[var(--accent)]',
-                      'transition-colors duration-150'
-                    )}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+                </BlockLine>
+                <DateTimeLine id="ef-start" label="Starts" date={startDate} time={startTime} onDate={setStartDate} onTime={setStartTime} showTime={!isAllDay} />
+                <DateTimeLine id="ef-end" label="Ends" date={endDate} time={endTime} onDate={setEndDate} onTime={setEndTime} showTime={!isAllDay} />
+                {!isAllDay && <TimeZoneLine zone={viewZone} />}
+                <RepeatLine value={recurrenceRule} onChange={setRecurrenceRule} />
               </div>
+            </Row>
+            <LocationRow value={location} onChange={setLocation} />
+            <ConferencingRow value={conferencingUrl} onChange={setConferencingUrl} />
+            {settings}
+          </>
+        )}
 
-              <SectionDivider />
-
-              {/* Reminders */}
-              <ReminderEditor reminders={reminders} onChange={setReminders} />
-
-              <SectionDivider />
-
-              {/* Visibility / Privacy */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Visibility</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'busy', label: 'Busy', icon: Eye },
-                      { value: 'free', label: 'Free', icon: Zap },
-                    ]}
-                    value={visibility}
-                    onChange={(v) => setVisibility(v as 'busy' | 'free')}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Privacy</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'public', label: 'Public', icon: Globe },
-                      { value: 'private', label: 'Private', icon: Lock },
-                    ]}
-                    value={privacy}
-                    onChange={(v) => setPrivacy(v as 'public' | 'private')}
-                  />
-                </div>
+        {activeTab === 'task' && (
+          <>
+            <ImportanceRow value={importance} onChange={setImportance} />
+            <Row icon={Clock}>
+              <div className="meow-ef-block">
+                <BlockLine label="Due" htmlFor="ef-due">
+                  <input id="ef-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="meow-ef-input" />
+                </BlockLine>
+                <BlockLine label="Earliest" htmlFor="ef-earliest">
+                  <input id="ef-earliest" type="date" value={earliestStart} onChange={(e) => setEarliestStart(e.target.value)} className="meow-ef-input" />
+                </BlockLine>
+                <DateTimeLine id="ef-sstart" label="Starts" date={scheduledStartDate} time={scheduledStartTime} onDate={setScheduledStartDate} onTime={setScheduledStartTime} showTime />
+                <DateTimeLine id="ef-send" label="Ends" date={scheduledEndDate} time={scheduledEndTime} onDate={setScheduledEndDate} onTime={setScheduledEndTime} showTime />
+                <EstimateLine value={timeEstimate} onChange={setTimeEstimate} />
               </div>
-            </>
-          )}
+            </Row>
+            <LocationRow value={location} onChange={setLocation} />
+            <SubtasksRow subtasks={subtasks} onChange={setSubtasks} onSplit={mode === 'edit' ? onSplit : undefined} />
+            <TagsRow tags={availableTags} selected={selectedTags} onToggle={toggleTag} />
+            {settings}
+          </>
+        )}
 
-          {/* TASK TAB */}
-          {activeTab === 'task' && (
-            <>
-              {/* Importance */}
-              <div>
-                <FieldLabel>Importance</FieldLabel>
-                <div className="flex gap-1">
-                  {IMPORTANCE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setImportance(opt.value)}
-                      className={cn(
-                        'flex-1 px-2 py-1.5 text-xs font-medium rounded-md',
-                        'border transition-colors duration-150',
-                        importance === opt.value
-                          ? 'border-transparent text-white'
-                          : 'border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)]'
-                      )}
-                      style={
-                        importance === opt.value
-                          ? { backgroundColor: opt.color }
-                          : undefined
-                      }
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+        {activeTab === 'routine' && (
+          <>
+            <Row icon={Clock}>
+              <div className="meow-ef-block">
+                <BlockLine label="Starts" htmlFor="ef-rstart">
+                  <input id="ef-rstart" type="time" value={routineStartTime} onChange={(e) => setRoutineStartTime(e.target.value)} className="meow-ef-input" />
+                </BlockLine>
+                <BlockLine label="Ends" htmlFor="ef-rend">
+                  <input id="ef-rend" type="time" value={routineEndTime} onChange={(e) => setRoutineEndTime(e.target.value)} className="meow-ef-input" />
+                </BlockLine>
+                <RepeatLine value={recurrenceRule ?? 'FREQ=DAILY'} onChange={setRecurrenceRule} />
               </div>
+            </Row>
+            <LocationRow value={location} onChange={setLocation} />
+            {settings}
+          </>
+        )}
+      </div>
 
-              {/* Time estimate */}
-              <div>
-                <FieldLabel>Time estimate</FieldLabel>
-                <input
-                  type="text"
-                  value={timeEstimate}
-                  onChange={(e) => setTimeEstimate(e.target.value)}
-                  placeholder='e.g., "60m" or "2h"'
-                  className={fieldClass()}
-                />
-              </div>
-
-              {/* Due date / Earliest start */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Due date</FieldLabel>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Earliest start</FieldLabel>
-                  <input
-                    type="date"
-                    value={earliestStart}
-                    onChange={(e) => setEarliestStart(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-              </div>
-
-              {/* Scheduled start/end */}
-              <div>
-                <FieldLabel>Scheduled slot (calendar)</FieldLabel>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="date"
-                    value={scheduledStartDate}
-                    onChange={(e) => setScheduledStartDate(e.target.value)}
-                    placeholder="Start date"
-                    className={fieldClass()}
-                  />
-                  <input
-                    type="time"
-                    value={scheduledStartTime}
-                    onChange={(e) => setScheduledStartTime(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                  <input
-                    type="date"
-                    value={scheduledEndDate}
-                    onChange={(e) => setScheduledEndDate(e.target.value)}
-                    placeholder="End date"
-                    className={fieldClass()}
-                  />
-                  <input
-                    type="time"
-                    value={scheduledEndTime}
-                    onChange={(e) => setScheduledEndTime(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-              </div>
-
-              {/* Location */}
-              <div>
-                <FieldLabel>Location</FieldLabel>
-                <div className="relative">
-                  <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Add location"
-                    className={fieldClass('pl-9')}
-                  />
-                </div>
-              </div>
-
-              <SectionDivider />
-
-              {/* Subtasks */}
-              <SubtaskList
-                subtasks={subtasks}
-                onChange={setSubtasks}
-                onSplit={mode === 'edit' ? onSplit : undefined}
-              />
-
-              <SectionDivider />
-
-              {/* Tags */}
-              <div>
-                <FieldLabel>Tags</FieldLabel>
-                <div className="flex flex-wrap gap-1.5">
-                  {availableTags.map((tag) => {
-                    const selected = selectedTags.some((t) => t.id === tag.id)
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => toggleTag(tag)}
-                        className={cn(
-                          'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium',
-                          'border transition-colors duration-150',
-                          selected
-                            ? 'border-transparent text-white'
-                            : 'border-[var(--border)] text-[var(--muted)] hover:text-[var(--fg)]'
-                        )}
-                        style={
-                          selected
-                            ? { backgroundColor: tag.color }
-                            : undefined
-                        }
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: tag.color }}
-                        />
-                        {tag.prefix ? `${tag.prefix} ${tag.name}` : tag.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <SectionDivider />
-
-              {/* Reminders */}
-              <ReminderEditor reminders={reminders} onChange={setReminders} />
-
-              <SectionDivider />
-
-              {/* Visibility / Privacy */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Visibility</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'busy', label: 'Busy', icon: Eye },
-                      { value: 'free', label: 'Free', icon: Zap },
-                    ]}
-                    value={visibility}
-                    onChange={(v) => setVisibility(v as 'busy' | 'free')}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Privacy</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'public', label: 'Public', icon: Globe },
-                      { value: 'private', label: 'Private', icon: Lock },
-                    ]}
-                    value={privacy}
-                    onChange={(v) => setPrivacy(v as 'public' | 'private')}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ROUTINE TAB */}
-          {activeTab === 'routine' && (
-            <>
-              {/* Time range */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Start time</FieldLabel>
-                  <input
-                    type="time"
-                    value={routineStartTime}
-                    onChange={(e) => setRoutineStartTime(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>End time</FieldLabel>
-                  <input
-                    type="time"
-                    value={routineEndTime}
-                    onChange={(e) => setRoutineEndTime(e.target.value)}
-                    className={fieldClass()}
-                  />
-                </div>
-              </div>
-
-              <SectionDivider />
-
-              {/* Recurrence */}
-              <RecurrenceBuilder
-                value={recurrenceRule ?? 'FREQ=DAILY'}
-                onChange={setRecurrenceRule}
-              />
-
-              <SectionDivider />
-
-              {/* Location */}
-              <div>
-                <FieldLabel>Location</FieldLabel>
-                <div className="relative">
-                  <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Add location"
-                    className={fieldClass('pl-9')}
-                  />
-                </div>
-              </div>
-
-              <SectionDivider />
-
-              {/* Reminders */}
-              <ReminderEditor reminders={reminders} onChange={setReminders} />
-
-              <SectionDivider />
-
-              {/* Visibility / Privacy */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Visibility</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'busy', label: 'Busy', icon: Eye },
-                      { value: 'free', label: 'Free', icon: Zap },
-                    ]}
-                    value={visibility}
-                    onChange={(v) => setVisibility(v as 'busy' | 'free')}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Privacy</FieldLabel>
-                  <ToggleGroup
-                    options={[
-                      { value: 'public', label: 'Public', icon: Globe },
-                      { value: 'private', label: 'Private', icon: Lock },
-                    ]}
-                    value={privacy}
-                    onChange={(v) => setPrivacy(v as 'public' | 'private')}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border)]">
-          <div>
-            {mode === 'edit' && onDelete && (
-              <button
-                type="button"
-                onClick={handleDeleteClick}
-                className={cn(
-                  'px-4 py-2 rounded-md text-sm font-medium',
-                  'text-[var(--destructive)] hover:bg-[var(--destructive)] hover:text-white',
-                  'border border-[var(--destructive)]',
-                  'transition-colors duration-150'
-                )}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className={cn(
-                'px-4 py-2 rounded-md text-sm font-medium',
-                'text-[var(--muted)] hover:text-[var(--fg)]',
-                'hover:bg-[var(--surface-hover)]',
-                'transition-colors duration-150'
-              )}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!title.trim()}
-              className={cn(
-                'px-6 py-2 rounded-md text-sm font-medium',
-                'bg-[var(--accent)] text-[var(--bg)]',
-                'hover:bg-[var(--accent-hover)]',
-                'disabled:opacity-50 disabled:pointer-events-none',
-                'transition-colors duration-150'
-              )}
-            >
-              {mode === 'create' ? 'Create' : 'Save'}
-            </button>
-          </div>
-        </div>
+      <div className="meow-ef-foot">
+        {mode === 'edit' && onDelete && (
+          <button type="button" onClick={handleDeleteClick} className="meow-ef-delete">
+            Delete
+          </button>
+        )}
+        <span className="flex-1" />
+        <button type="button" onClick={onClose} className="meow-ef-cancel">
+          Cancel
+        </button>
+        <button type="button" onClick={handleSave} disabled={!title.trim()} className="meow-ef-save">
+          {mode === 'create' ? 'Create' : 'Save'}
+        </button>
       </div>
 
       {/* Recurrence scope dialog for delete on recurring items */}
@@ -948,7 +555,6 @@ export function ItemEditForm({
         itemTitle={title || initialData?.title || ''}
         mode="delete"
       />
-    </div>,
-    document.body
+    </EditPopover>
   )
 }

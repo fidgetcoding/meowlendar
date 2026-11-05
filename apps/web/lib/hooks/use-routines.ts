@@ -5,6 +5,7 @@ import { readAll } from '@/lib/read-all'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Routine, RoutineInstance, RoutineInstanceStatus } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
+import { sessionUserId } from '@/lib/auth/session-ready'
 
 // ---------------------------------------------------------------------------
 // Query-key factory
@@ -23,7 +24,10 @@ export const routineKeys = {
 // Input types
 // ---------------------------------------------------------------------------
 
-export type CreateRoutineInput = Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+export type CreateRoutineInput = Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at'> & {
+  /** Chosen by the caller so a resent create (see lib/undo/unload-commit) can't duplicate it. */
+  id?: string
+}
 
 export type UpdateRoutineInput = {
   id: string
@@ -67,14 +71,9 @@ export function useCreateRoutine() {
   return useMutation({
     mutationFn: async (input: CreateRoutineInput & { user_id?: string | null }): Promise<Routine> => {
       const { user_id, ...rest } = input
-      // Never drop a create because the profile query is still in flight.
-      let ownerId = user_id ?? null
-      if (!ownerId) {
-        const { data: auth, error: authError } = await supabase.auth.getUser()
-        if (authError) throw authError
-        if (!auth.user) throw new Error('Not authenticated')
-        ownerId = auth.user.id
-      }
+      // Never drop a create because the profile query is still in flight, and never hold the
+      // insert for a server round trip: the owner comes from the session the browser holds.
+      const ownerId = user_id ?? (await sessionUserId(supabase))
 
       const { data, error } = await supabase
         .from('routines')
@@ -93,7 +92,7 @@ export function useCreateRoutine() {
         queryKey: routineKeys.lists(),
       })
 
-      const tempId = crypto.randomUUID()
+      const tempId = input.id ?? crypto.randomUUID()
       const now = new Date().toISOString()
       const optimistic: Routine = {
         ...input,

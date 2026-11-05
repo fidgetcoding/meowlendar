@@ -7,6 +7,7 @@ import type { Task, Routine } from '@poolendar/types'
 import { useCalendarStore } from '@/lib/stores/calendar-store'
 import { useUpdateTask } from '@/lib/hooks/use-tasks'
 import { useUpdateRoutine } from '@/lib/hooks/use-routines'
+import { timeInZone } from '@/lib/recurrence'
 
 /**
  * Drop-onto-calendar logic for sidebar tasks/routines (#33). Extracted from the
@@ -28,61 +29,53 @@ export function useSidebarCalendarDrop() {
     clientY: number
   ) {
     const rect = dayColumnEl.getBoundingClientRect()
-    const hourHeight = useCalendarStore.getState().hourHeight || 60
-    const resolution = useCalendarStore.getState().timeDraggingResolution || 15
+    const { hourHeight: storeHourHeight, timeDraggingResolution, timeGridStart, timeGridEnd } = useCalendarStore.getState()
+    const hourHeight = storeHourHeight || 60
+    const resolution = timeDraggingResolution || 15
+    // The column's top edge is the grid's first hour, not midnight.
+    const gridStartMinutes = (timeGridStart ?? 0) * 60
+    const gridEndMinutes = (timeGridEnd ?? 24) * 60
     const yOffset = clientY - rect.top
-    const rawMinutes = (yOffset / hourHeight) * 60
+    const rawMinutes = gridStartMinutes + (yOffset / hourHeight) * 60
     const snappedMinutes = Math.round(rawMinutes / resolution) * resolution
-    const clampedMinutes = Math.max(0, Math.min(24 * 60 - resolution, snappedMinutes))
-    const startHour = Math.floor(clampedMinutes / 60)
-    const startMinute = clampedMinutes % 60
+    const clampedMinutes = Math.max(gridStartMinutes, Math.min(gridEndMinutes - resolution, snappedMinutes))
 
     const dateAttr = dayColumnEl.dataset.dayColumn
     const dateStr = dateAttr || format(new Date(), 'yyyy-MM-dd')
+    // The slot is wall-clock time in the viewer's zone, as the grid draws it.
+    const [year = 1970, month = 1, day = 1] = dateStr.split('-').map(Number)
+    const at = (minutes: number) => new Date(year, month - 1, day, 0, minutes)
+    const start = at(clampedMinutes)
 
     if (dragData.type === 'sidebar-task' && dragData.task) {
       const task = dragData.task
       const duration = task.time_estimate_minutes || 30
-      const endMinutes = clampedMinutes + duration
-      const endHour = Math.floor(endMinutes / 60)
-      const endMinute = endMinutes % 60
-
-      const scheduledStart = `${dateStr}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`
-      const scheduledEnd = `${dateStr}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`
 
       updateTask.mutate({
         id: task.id,
-        data: { scheduled_start: scheduledStart, scheduled_end: scheduledEnd },
+        data: {
+          scheduled_start: start.toISOString(),
+          scheduled_end: at(clampedMinutes + duration).toISOString(),
+        },
       })
     }
 
     if (dragData.type === 'sidebar-routine' && dragData.routine) {
       const routine = dragData.routine
-      const startParts = routine.start_time.split('T')
-      const endParts = routine.end_time.split('T')
-      let durationMinutes = 60
-
-      if (startParts.length > 1 && endParts.length > 1) {
-        const sParts = (startParts[1] ?? '09:00').split(':').map(Number)
-        const eParts = (endParts[1] ?? '10:00').split(':').map(Number)
-        const sh = sParts[0] ?? 9
-        const sm = sParts[1] ?? 0
-        const eh = eParts[0] ?? 10
-        const em = eParts[1] ?? 0
-        durationMinutes = eh * 60 + em - (sh * 60 + sm)
-        if (durationMinutes <= 0) durationMinutes = 60
+      // Routine times are "HH:mm" wall-clock in the routine's own zone (older rows may carry a date).
+      const minutesOf = (value: string, fallback: number) => {
+        const [h, m] = (value.split('T').pop() ?? '').split(':').map(Number)
+        return h === undefined || Number.isNaN(h) ? fallback : h * 60 + (m || 0)
       }
-
-      const endMinutes = clampedMinutes + durationMinutes
-      const endHour = Math.floor(endMinutes / 60)
-      const endMinute = endMinutes % 60
-
-      const newStartTime = `${dateStr}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`
-      const newEndTime = `${dateStr}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`
+      let durationMinutes = minutesOf(routine.end_time, 10 * 60) - minutesOf(routine.start_time, 9 * 60)
+      if (durationMinutes <= 0) durationMinutes = 60
 
       updateRoutine.mutate({
         id: routine.id,
-        data: { start_time: newStartTime, end_time: newEndTime },
+        data: {
+          start_time: timeInZone(start, routine.timezone),
+          end_time: timeInZone(at(clampedMinutes + durationMinutes), routine.timezone),
+        },
       })
     }
   }

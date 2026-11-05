@@ -84,6 +84,8 @@ describe('auth helpers', () => {
       expect(getApiKeyAccessToken).toHaveBeenCalled()
       expect(createUserScopedClient).toHaveBeenCalledWith('fake.jwt.token')
       expect(authResult.supabase).toBe(mockScopedClient)
+      // Routes read this to record an API-key write as the agent's.
+      expect(authResult.apiKeyId).toBe('key-1')
     })
 
     it('classifies GET as a read (1000/min) and POST as a write (100/min)', async () => {
@@ -129,6 +131,7 @@ describe('auth helpers', () => {
       expect(result).not.toBeInstanceOf(NextResponse)
       const authResult = result as AuthResult
       expect(authResult.userId).toBe('session-user-id')
+      expect(authResult.apiKeyId).toBeUndefined()
       // Session callers are never rate-limited.
       expect(rateLimitAsync).not.toHaveBeenCalled()
     })

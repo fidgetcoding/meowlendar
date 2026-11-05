@@ -14,11 +14,17 @@ it('chooses dark ink on pale calendar colors and white ink on dark colors', () =
   expect(getReadableTextColor('#fff')).toBe('#000000')
 })
 
-it('uses readable ink for both the title and time of a pale event', () => {
+it('draws a pale event as a light tint of its colour with the theme ink, never ink on the raw colour', () => {
   const item = { id: 'event-1', type: 'event', title: 'Calendar event', color: '#9de1e6', startTime: new Date(2026, 10, 5, 8), endTime: new Date(2026, 10, 5, 9) } as CalendarItemData
   render(<CalendarItem item={item} style={{ height: 60 }} />)
-  expect(screen.getByText('Calendar event').style.color).toBe('rgb(0, 0, 0)')
-  expect(screen.getByText('8:00 - 9:00 AM').style.color).toBe('rgb(0, 0, 0)')
+  const title = screen.getByText('Calendar event')
+  const box = title.closest('[data-calendar-item]') as HTMLElement
+  // The box carries the calendar colour for the tint and the left bar; the text sets no colour of
+  // its own, so it inherits the theme's ink (dark on light, light on dark).
+  expect(box.style.getPropertyValue('--c')).toBe('#9de1e6')
+  expect(box.style.backgroundColor).toBe('')
+  expect(title.style.color).toBe('')
+  expect(screen.getByText('8 - 9 AM').style.color).toBe('')
 })
 
 it('keeps at least 4.5:1 contrast across representative Google calendar colors', () => {

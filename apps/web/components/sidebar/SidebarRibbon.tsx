@@ -2,18 +2,19 @@
 
 import * as React from 'react'
 import {
-  CheckSquare,
   CalendarDays,
-  CalendarClock,
+  Link2,
   Clock,
   Moon,
   Settings,
   Sun,
-  ChevronsLeft,
-  ChevronsRight,
+  PanelLeftOpen,
+  PanelLeftClose,
+  SquareCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
+import { CatMark } from '@/components/brand/Wordmark'
 
 interface SidebarRibbonProps {
   activePanel: 'tasks' | 'calendar' | 'booking' | 'schedules' | null
@@ -28,7 +29,7 @@ interface SidebarRibbonProps {
 type NavItem = {
   id: 'tasks' | 'calendar' | 'booking' | 'schedules'
   label: string
-  icon: typeof CheckSquare
+  icon: typeof SquareCheck
   onClick: () => void
   disabled?: boolean
 }
@@ -83,27 +84,15 @@ function ThemeToggleButton({ isExpanded }: { isExpanded: boolean }) {
 
   return (
     <Tooltip label={label} visible={!isExpanded}>
-      <button
-        type="button"
-        onClick={toggleTheme}
-        aria-label={label}
-        className={cn(
-          'relative flex items-center gap-3 rounded-md',
-          'text-[var(--muted)] transition-colors duration-150',
-          'hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
-          isExpanded ? 'h-10 px-3' : 'h-12 w-10 justify-center'
-        )}
-      >
-        <Icon className="h-5 w-5 shrink-0" />
-        {isExpanded && (
-          <span className="truncate text-sm font-medium">{label}</span>
-        )}
+      <button type="button" onClick={toggleTheme} aria-label={label} className="meow-rib-b">
+        <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
+        {isExpanded && <span className="truncate">{label}</span>}
       </button>
     </Tooltip>
   )
 }
 
+/** The pale left rail: periwinkle cat-o on top, labelled icons, theme / settings / expand at the foot. */
 export function SidebarRibbon({
   activePanel,
   isExpanded,
@@ -114,85 +103,48 @@ export function SidebarRibbon({
   onToggleExpand,
 }: SidebarRibbonProps) {
   const navItems: NavItem[] = [
-    { id: 'tasks', label: 'Tasks', icon: CheckSquare, onClick: onToggleTasks },
+    { id: 'tasks', label: 'Tasks', icon: SquareCheck, onClick: onToggleTasks },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays, onClick: onCalendarView },
-    { id: 'booking', label: 'Booking', icon: CalendarClock, onClick: onToggleBooking },
+    { id: 'booking', label: 'Booking', icon: Link2, onClick: onToggleBooking },
     { id: 'schedules', label: 'Schedules', icon: Clock, onClick: () => {}, disabled: true },
   ]
 
   return (
-    <nav
-      aria-label="Main navigation"
-      className={cn(
-        'flex h-full flex-col justify-between',
-        'border-r border-[var(--border)] bg-[var(--bg)]',
-        'transition-[width] duration-200 ease-in-out',
-        isExpanded ? 'w-[200px]' : 'w-12'
-      )}
-    >
-      <div className="flex flex-col gap-0.5 pt-2 px-1">
+    <nav aria-label="Main navigation" className={cn('meow-rib', isExpanded && 'is-expanded')}>
+      <button type="button" onClick={onCalendarView} className="meow-rib-mark" aria-label="Meowlendar">
+        <CatMark />
+      </button>
+
+      <div className="meow-rib-items">
         {navItems.map((item) => {
           const active = activePanel === item.id
           const Icon = item.icon
-
           return (
-            <Tooltip key={item.id} label={item.label} visible={!isExpanded}>
-              <button
-                type="button"
-                onClick={item.onClick}
-                disabled={item.disabled}
-                aria-label={item.label}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'relative flex items-center gap-3 rounded-md',
-                  'transition-colors duration-150',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
-                  isExpanded ? 'h-10 px-3' : 'h-12 w-10 justify-center',
-                  item.disabled && 'pointer-events-none opacity-40',
-                  !item.disabled && !active && 'text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
-                  active && 'text-[var(--accent)]'
-                )}
-              >
-                {active && (
-                  <span
-                    className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
-                    aria-hidden="true"
-                  />
-                )}
-                <Icon className="h-5 w-5 shrink-0" />
-                {isExpanded && (
-                  <span className="truncate text-sm font-medium">
-                    {item.label}
-                  </span>
-                )}
-              </button>
-            </Tooltip>
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.onClick}
+              disabled={item.disabled}
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              className={cn('meow-rib-it', active && 'is-on')}
+            >
+              <Icon className="h-5 w-5 shrink-0" strokeWidth={1.6} />
+              <span aria-hidden="true">{item.label}</span>
+            </button>
           )
         })}
       </div>
 
-      <div className="flex flex-col gap-0.5 pb-2 px-1">
-        <div className="mx-2 mb-1 border-t border-[var(--border)]" />
+      <span className="flex-1" />
 
+      <div className="meow-rib-foot">
         <ThemeToggleButton isExpanded={isExpanded} />
 
         <Tooltip label="Settings" visible={!isExpanded}>
-          <button
-            type="button"
-            onClick={onSettings}
-            aria-label="Settings"
-            className={cn(
-              'relative flex items-center gap-3 rounded-md',
-              'text-[var(--muted)] transition-colors duration-150',
-              'hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
-              isExpanded ? 'h-10 px-3' : 'h-12 w-10 justify-center'
-            )}
-          >
-            <Settings className="h-5 w-5 shrink-0" />
-            {isExpanded && (
-              <span className="truncate text-sm font-medium">Settings</span>
-            )}
+          <button type="button" onClick={onSettings} aria-label="Settings" className="meow-rib-b">
+            <Settings className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
+            {isExpanded && <span className="truncate">Settings</span>}
           </button>
         </Tooltip>
 
@@ -200,21 +152,15 @@ export function SidebarRibbon({
           type="button"
           onClick={onToggleExpand}
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          className={cn(
-            'flex items-center gap-3 rounded-md',
-            'text-[var(--muted)] transition-colors duration-150',
-            'hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
-            isExpanded ? 'h-10 px-3' : 'h-12 w-10 justify-center'
-          )}
+          className="meow-rib-b"
         >
           {isExpanded ? (
             <>
-              <ChevronsLeft className="h-5 w-5 shrink-0" />
-              <span className="truncate text-sm font-medium">Collapse</span>
+              <PanelLeftClose className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
+              <span className="truncate">Collapse</span>
             </>
           ) : (
-            <ChevronsRight className="h-5 w-5 shrink-0" />
+            <PanelLeftOpen className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
           )}
         </button>
       </div>

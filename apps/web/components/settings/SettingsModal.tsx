@@ -78,7 +78,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   language: 'en',
   first_day_of_week: 'sunday',
   initial_view: 'week',
-  theme_accent_color: '#f9a825',
+  theme_accent_color: '#6f7ae0',
   time_grid_start: '00:00',
   time_grid_end: '24:00',
   time_display_resolution: 15,

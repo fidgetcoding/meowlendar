@@ -6,6 +6,7 @@ import { deleteEventSeries } from '@/lib/recurrence-edit'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CalendarEvent } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
+import { sessionUserId } from '@/lib/auth/session-ready'
 import { eventsInWindowFilter } from '@/lib/recurrence'
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,8 @@ export type CreateEventInput = Omit<
   CalendarEvent,
   'id' | 'created_at' | 'updated_at' | 'user_id' | 'calendar_id'
 > & {
+  /** Chosen by the caller so a resent create (see lib/undo/unload-commit) can't duplicate it. */
+  id?: string
   user_id?: string | null
   /** Left empty, the event goes on the user's default calendar. */
   calendar_id?: string | null
@@ -94,7 +97,7 @@ export function useEvent(id: string) {
  * else the first one turned on. Asked at save time, because a quick-create can happen
  * before the browser has loaded the calendar list.
  */
-async function defaultCalendarId(
+export async function defaultCalendarId(
   supabase: ReturnType<typeof createClient>,
   ownerId: string,
 ): Promise<string> {
@@ -122,14 +125,9 @@ export function useCreateEvent() {
 
   return useMutation({
     mutationFn: async ({ user_id, calendar_id, ...rest }: CreateEventInput): Promise<CalendarEvent> => {
-      // Never drop a create because the profile query is still in flight.
-      let ownerId = user_id ?? null
-      if (!ownerId) {
-        const { data: auth, error: authError } = await supabase.auth.getUser()
-        if (authError) throw authError
-        if (!auth.user) throw new Error('Not authenticated')
-        ownerId = auth.user.id
-      }
+      // Never drop a create because the profile query is still in flight, and never hold the
+      // insert for a server round trip: the owner comes from the session the browser holds.
+      const ownerId = user_id ?? (await sessionUserId(supabase))
 
       const { data, error } = await supabase
         .from('events')
@@ -152,7 +150,7 @@ export function useCreateEvent() {
         queryKey: eventKeys.lists(),
       })
 
-      const tempId = crypto.randomUUID()
+      const tempId = input.id ?? crypto.randomUUID()
       const optimistic: CalendarEvent = {
         ...input,
         user_id: input.user_id ?? '',
@@ -356,6 +354,33 @@ export function useRecurringEventChange() {
       if (!res.ok) throw new Error('Failed to change the recurring event')
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.all })
+    },
+  })
+}
+
+export type RsvpAnswer = 'accepted' | 'tentative' | 'declined'
+
+/**
+ * Answers an invitation for one copy of an event. On a Google calendar the reply goes to
+ * Google as that copy's account. A failure throws with the server's reason, for the caller
+ * to show.
+ */
+export function useRsvpEvent() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, response }: { id: string; response: RsvpAnswer }) => {
+      const res = await fetch(`/api/events/${encodeURIComponent(id)}/rsvp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response }),
+      })
+      const body = (await res.json().catch(() => null)) as { error?: string } | CalendarEvent | null
+      if (!res.ok) throw new Error((body && 'error' in body && body.error) || `Your reply didn't go through (${res.status})`)
+      return body as CalendarEvent
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: eventKeys.all })
     },
   })

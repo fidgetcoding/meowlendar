@@ -3,7 +3,7 @@
 import { readAll } from '@/lib/read-all'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Task, TaskStatus, TaskBoard, Tag } from '@poolendar/types'
+import type { Task, TaskStatus, TaskBoard, Tag, Subtask } from '@poolendar/types'
 import { createClient } from '@/lib/supabase/client'
 import { omit } from '@/lib/omit'
 import { subtaskKeys } from './use-subtasks'
@@ -33,8 +33,10 @@ type TaskListFilters = {
 
 export type CreateTaskInput = Omit<
   Task,
-  'id' | 'created_at' | 'updated_at' | 'subtasks' | 'tags' | 'children' | 'user_id' | 'vault_ref'
+  'id' | 'created_at' | 'updated_at' | 'subtasks' | 'tags' | 'children' | 'user_id' | 'vault_ref' | 'created_via'
 > & {
+  /** Chosen by the caller so a resent create (see lib/undo/unload-commit) can't duplicate it. */
+  id?: string
   tag_ids?: string[]
   /**
    * Optional. Callers that already have the profile loaded can pass it; when
@@ -83,9 +85,11 @@ export function useTasks(filters: TaskListFilters = {}) {
   return useQuery({
     queryKey: taskKeys.list(filters),
     queryFn: async (): Promise<Task[]> => {
+      // Subtasks come in the same request (one embedded join, no extra round trip): the board's
+      // progress bar, the panel's "2/3" and the edit form all read them from the list.
       let query = supabase
         .from('tasks')
-        .select('*, task_tags(tag_id, tags(*))')
+        .select('*, task_tags(tag_id, tags(*)), subtasks(*)')
         .order('position', { ascending: true, nullsFirst: false })
 
       if (filters.status) {
@@ -108,14 +112,16 @@ export function useTasks(filters: TaskListFilters = {}) {
 
       if (error) throw error
 
-      // Flatten the joined tag structure
+      // Flatten the joined tag structure; subtasks in their list order
       return (data ?? []).map((row) => {
-        const { task_tags, ...task } = row as Record<string, unknown> & {
+        const { task_tags, subtasks, ...task } = row as Record<string, unknown> & {
           task_tags?: { tag_id: string; tags: Tag }[]
+          subtasks?: Subtask[]
         }
         return {
           ...task,
           tags: task_tags?.map((tt) => tt.tags).filter(Boolean) ?? [],
+          subtasks: [...(subtasks ?? [])].sort((a, b) => a.position - b.position),
         } as Task
       })
     },
@@ -166,7 +172,7 @@ export function useCreateTask() {
       const { tag_ids, ...rest } = input
       // The RPC derives ownership from auth.uid() and commits task + tags together.
       const { data, error } = await supabase.rpc('create_task_with_children', {
-        p_task: omit(rest, ['user_id']), p_tag_ids: tag_ids ?? [], p_subtasks: [],
+        p_task: { ...omit(rest, ['user_id']), created_via: 'app' }, p_tag_ids: tag_ids ?? [], p_subtasks: [],
       })
       if (error) throw error
       return data as Task
@@ -179,7 +185,7 @@ export function useCreateTask() {
         queryKey: taskKeys.lists(),
       })
 
-      const tempId = crypto.randomUUID()
+      const tempId = input.id ?? crypto.randomUUID()
       const taskData = omit(input, ['tag_ids'])
       const optimistic: Task = {
         ...taskData,
@@ -189,6 +195,7 @@ export function useCreateTask() {
         user_id: taskData.user_id ?? '',
         id: tempId,
         vault_ref: null,
+        created_via: 'app',
         subtasks: [],
         tags: [],
         children: [],

@@ -148,6 +148,8 @@ export function useCreateSubtask() {
         queryKey: subtaskKeys.list(input.task_id),
       })
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(input.task_id) })
+      // The task lists carry subtasks for the board's progress bar.
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
     },
   })
 }
@@ -199,6 +201,7 @@ export function useUpdateSubtask() {
     onSettled: (_data, _err, { task_id }) => {
       queryClient.invalidateQueries({ queryKey: subtaskKeys.list(task_id) })
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(task_id) })
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
     },
   })
 }
@@ -246,6 +249,7 @@ export function useDeleteSubtask() {
     onSettled: (_data, _err, { task_id }) => {
       queryClient.invalidateQueries({ queryKey: subtaskKeys.list(task_id) })
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(task_id) })
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
     },
   })
 }
@@ -311,6 +315,7 @@ export function useReorderSubtasks() {
     onSettled: (_data, _err, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: subtaskKeys.list(taskId) })
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) })
+      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
     },
   })
 }

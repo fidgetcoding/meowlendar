@@ -12,19 +12,14 @@ import { TaskCard } from './TaskCard'
 import { TaskCardCompact } from './TaskCardCompact'
 import { EmptyColumn } from './EmptyColumn'
 import { QuickAddTask } from './QuickAddTask'
+import { Loaf } from '@/components/brand/cats'
+import { cn } from '@/lib/utils'
 
 const COLUMN_TITLES: Record<TaskStatus, string> = {
   backlog: 'Backlog',
   in_progress: 'In Progress',
   check: 'Check',
   done: 'Done',
-}
-
-const COLUMN_ACCENT: Record<TaskStatus, string> = {
-  backlog: 'var(--muted)',
-  in_progress: 'var(--accent)',
-  check: '#3b82f6',
-  done: 'var(--success)',
 }
 
 const COMPACT_THRESHOLD = 10
@@ -61,92 +56,46 @@ export function KanbanColumn({
 
   const useCompact = tasks.length > COMPACT_THRESHOLD
   const taskIds = tasks.map((t) => t.id)
-  const accentColor = COLUMN_ACCENT[status]
 
   return (
-    <div
-      data-kanban-column={status}
-      className="flex flex-col min-w-[85vw] md:min-w-[280px] max-w-none md:max-w-[340px] w-full shrink-0 snap-center rounded-xl transition-colors duration-200"
-      style={{
-        backgroundColor: isOver
-          ? 'rgba(249, 168, 37, 0.04)'
-          : 'var(--surface-translucent)',
-        border: isOver
-          ? '1px solid rgba(249, 168, 37, 0.2)'
-          : '1px solid transparent',
-      }}
-    >
+    <div data-kanban-column={status} className={cn('meow-bcol', isOver && 'is-over')}>
       {/* Column header */}
-      <div className="flex items-center justify-between px-3 py-3">
+      <div className="meow-bch">
         <button
           type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="flex items-center gap-2 group"
+          aria-expanded={!isCollapsed}
+          className="meow-bch-title group"
         >
+          <span className="meow-bch-h">{COLUMN_TITLES[status]}</span>
+          <span className="meow-bch-cnt">{tasks.length}</span>
           {isCollapsed ? (
-            <ChevronRight
-              size={14}
-              style={{ color: 'var(--muted)' }}
-              className="group-hover:text-[color:var(--fg)] transition-colors"
-            />
+            <ChevronRight size={14} className="text-[var(--muted)]" />
           ) : (
-            <ChevronDown
-              size={14}
-              style={{ color: 'var(--muted)' }}
-              className="group-hover:text-[color:var(--fg)] transition-colors"
-            />
+            <ChevronDown size={14} className="text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
           )}
-
-          <span
-            className="text-sm font-semibold"
-            style={{ color: 'var(--fg)' }}
-          >
-            {COLUMN_TITLES[status]}
-          </span>
-
-          <span
-            className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-            style={{
-              backgroundColor: `${accentColor}18`,
-              color: accentColor,
-            }}
-          >
-            {tasks.length}
-          </span>
         </button>
 
-        <div className="flex items-center gap-2">
-          {/* Column-header add (#42) — creates a task pre-assigned to this column */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsCollapsed(false)
-              setHeaderAddOpen(true)
-            }}
-            aria-label={`Add task to ${COLUMN_TITLES[status]}`}
-            title={`Add task to ${COLUMN_TITLES[status]}`}
-            className="flex items-center justify-center w-6 h-6 rounded text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            <Plus size={14} />
-          </button>
-
-          {/* Column accent bar */}
-          <div
-            className="w-8 h-0.5 rounded-full"
-            style={{ backgroundColor: accentColor }}
-          />
-        </div>
+        {/* Column-header add (#42) — creates a task pre-assigned to this column */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsCollapsed(false)
+            setHeaderAddOpen(true)
+          }}
+          aria-label={`Add task to ${COLUMN_TITLES[status]}`}
+          title={`Add task to ${COLUMN_TITLES[status]}`}
+          className="meow-bch-add"
+        >
+          <Plus size={18} strokeWidth={1.6} />
+        </button>
       </div>
 
       {/* Collapse/expand content */}
       {!isCollapsed && (
-        <div
-          ref={setNodeRef}
-          className="flex-1 px-2 pb-3 overflow-y-auto"
-          style={{ maxHeight: 'calc(100vh - 200px)' }}
-        >
+        <div ref={setNodeRef} className="meow-blist">
           {headerAddOpen && (
-            <div className="mb-2">
+            <div className="mb-1">
               <QuickAddTask
                 status={status}
                 onCreateTask={onCreateTask}
@@ -163,7 +112,7 @@ export function KanbanColumn({
             {tasks.length === 0 ? (
               <EmptyColumn status={status} />
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="meow-bcards">
                 {tasks.map((task) =>
                   useCompact ? (
                     <TaskCardCompact
@@ -191,9 +140,16 @@ export function KanbanColumn({
           </SortableContext>
 
           {/* Quick add at column bottom */}
-          <div className="mt-2">
+          <div className="mt-1">
             <QuickAddTask status={status} onCreateTask={onCreateTask} />
           </div>
+        </div>
+      )}
+
+      {/* The big corner loaf, asleep at the foot of Done */}
+      {status === 'done' && (
+        <div className="meow-donecat" aria-hidden="true">
+          <Loaf />
         </div>
       )}
     </div>

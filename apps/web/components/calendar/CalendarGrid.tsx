@@ -20,7 +20,6 @@ import { DayColumn } from './DayColumn'
 import { CalendarDragOverlay } from './CalendarDragOverlay'
 import { MonthGrid } from './MonthGrid'
 import { NewItemPopover } from './NewItemPopover'
-import { getReadableTextColor } from './event-color'
 import { eventsToItems, tasksToItems, routinesToItems } from './grid-items'
 import {
   getVisibleDays,
@@ -33,7 +32,8 @@ import {
   type GridView,
 } from './grid-helpers'
 import { useCalendarRoutineInstances } from '@/lib/hooks/use-routines'
-import { useUIStore } from '@/lib/stores/ui-store'
+import { useUIStore, type AnchorRect } from '@/lib/stores/ui-store'
+import { TodayHead } from '@/components/brand/Wordmark'
 
 interface CalendarGridProps {
   view: GridView
@@ -82,7 +82,9 @@ interface CalendarGridProps {
     type: CalendarItemType,
     date: Date,
     startTime: Date,
-    endTime?: Date
+    endTime?: Date,
+    anchor?: AnchorRect,
+    title?: string
   ) => void
   onRoutineCheckboxClick?: (item: CalendarItemData) => void
   onTaskCheckboxClick?: (item: CalendarItemData) => void
@@ -126,6 +128,7 @@ export function CalendarGrid({
   onTaskCheckboxClick,
 }: CalendarGridProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const bodyRef = React.useRef<HTMLDivElement>(null)
   const dismissingPopoverRef = React.useRef(false)
   const [activeItem, setActiveItem] = React.useState<Active | null>(null)
   const [popoverState, setPopoverState] = React.useState<{
@@ -178,6 +181,10 @@ export function CalendarGrid({
     const windowStart = startOfDay(visibleDays[0] ?? currentDate)
     const windowEnd = endOfDay(visibleDays[visibleDays.length - 1] ?? currentDate)
     let eventItems = eventsToItems(events, calendars, { start: windowStart, end: windowEnd })
+    // Merge first, so a meeting declined on one account still shows from the one you accepted on.
+    if (mergeDuplicateEvents) {
+      eventItems = mergeDuplicateEventItems(eventItems, calendars)
+    }
     if (!showDeclinedEvents) {
       eventItems = eventItems.filter(
         (i) => !(i.event && isDeclinedEvent(i.event, selfEmails))
@@ -191,11 +198,7 @@ export function CalendarGrid({
 
     const routineItems = routinesToItems(routines, visibleDays, calendars, routineInstances)
 
-    let combined = [...eventItems, ...taskItems, ...routineItems]
-    if (mergeDuplicateEvents) {
-      combined = mergeDuplicateEventItems(combined)
-    }
-    return combined
+    return [...eventItems, ...taskItems, ...routineItems]
   }, [currentDate, 
     events,
     tasks,
@@ -218,11 +221,48 @@ export function CalendarGrid({
     [allItems]
   )
 
+  // The grid opens at 8 AM and stays aligned there while nobody touches it, including when the
+  // start hour arrives late from saved settings and shifts every row. Once anything else moves it
+  // (wheel, touch, the scrollbar, keys, a script), it never scrolls on its own again.
+  const autoScrollRef = React.useRef<{ el: HTMLElement | null; top: number; userScrolled: boolean }>({
+    el: null,
+    top: 0,
+    userScrolled: false,
+  })
+  React.useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const mark = () => {
+      if (autoScrollRef.current.el === el) autoScrollRef.current.userScrolled = true
+    }
+    el.addEventListener('wheel', mark, { passive: true })
+    el.addEventListener('touchmove', mark, { passive: true })
+    return () => {
+      el.removeEventListener('wheel', mark)
+      el.removeEventListener('touchmove', mark)
+    }
+  }, [view])
+
   React.useEffect(() => {
     if (view === 'month') return
-    if (!scrollRef.current) return
-    const scrollTarget = Math.max(0, SCROLL_TO_HOUR - startHour) * hourHeight
-    scrollRef.current.scrollTop = scrollTarget
+    const el = scrollRef.current
+    if (!el) return
+    const auto = autoScrollRef.current
+    if (auto.el !== el) {
+      auto.el = el
+      auto.userScrolled = false
+    } else if (auto.userScrolled || el.scrollTop !== auto.top) {
+      auto.userScrolled = true
+      return
+    }
+    el.scrollTop = Math.max(0, SCROLL_TO_HOUR - startHour) * hourHeight
+    auto.top = el.scrollTop
+    // Phones scroll sideways through fixed-width days: open with today second from the left.
+    if (el.scrollWidth > el.clientWidth) {
+      const todayCol = el.querySelector<HTMLElement>('[data-day-column].is-today')
+      const firstCol = el.querySelector<HTMLElement>('[data-day-column]')
+      if (todayCol && firstCol) el.scrollLeft = Math.max(0, todayCol.offsetLeft - firstCol.offsetLeft - firstCol.offsetWidth)
+    }
   }, [view, hourHeight, currentDate, startHour])
 
   function handleDragStart(event: DragStartEvent) {
@@ -266,6 +306,15 @@ export function CalendarGrid({
     onItemReschedule?.(draggedItem.id, draggedItem.type, newStart, newEnd)
   }
 
+  /** The new slot's box on screen: the day column's width, from start to end. */
+  function slotRect(date: Date, start: Date, end: Date): AnchorRect | undefined {
+    const column = scrollRef.current?.querySelector<HTMLElement>(`[data-day-column="${format(date, 'yyyy-MM-dd')}"]`)
+    if (!column) return undefined
+    const r = column.getBoundingClientRect()
+    const y = (t: Date) => (t.getHours() + t.getMinutes() / 60 - startHour) * hourHeight
+    return { left: r.left, top: r.top + y(start), width: r.width, height: Math.max(y(end) - y(start), 20) }
+  }
+
   function handleTimeSlotClick(date: Date, time: Date, endTime?: Date) {
     if (dismissingPopoverRef.current) {
       dismissingPopoverRef.current = false
@@ -275,10 +324,16 @@ export function CalendarGrid({
       onTimeSlotClick(date, time)
     }
 
+    // A double click or a drag makes the slot: open the full editor right beside it.
+    if (endTime && onOpenFullForm) {
+      onOpenFullForm('event', date, time, endTime, slotRect(date, time, endTime))
+      return
+    }
+
     const el = scrollRef.current
     if (!el) return
 
-    const top = (time.getHours() + time.getMinutes() / 60 - startHour) * hourHeight
+    const top = (time.getHours() + time.getMinutes() / 60 - startHour) * hourHeight + (bodyRef.current?.offsetTop ?? 0)
     const rect = el.getBoundingClientRect()
     const anchorRect = new DOMRect(
       rect.left + rect.width / 2,
@@ -301,14 +356,11 @@ export function CalendarGrid({
     setPopoverState(null)
   }
 
-  function handleOpenFullForm(_title: string, type: CalendarItemType) {
+  function handleOpenFullForm(title: string, type: CalendarItemType) {
     if (popoverState) {
-      onOpenFullForm?.(
-        type,
-        popoverState.date,
-        popoverState.startTime,
-        popoverState.endTime
-      )
+      const { date, startTime, endTime } = popoverState
+      const end = endTime ?? new Date(startTime.getTime() + 30 * 60_000)
+      onOpenFullForm?.(type, date, startTime, endTime, slotRect(date, startTime, end), title.trim() || undefined)
     }
     setPopoverState(null)
   }
@@ -346,85 +398,93 @@ export function CalendarGrid({
       onDragEnd={handleDragEnd}
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden" onContextMenu={handleGridContextMenu}>
-        <WeekHeader
-          days={visibleDays}
-          showWeekNumbers={showWeekNumbers}
-          widenCurrentDay={widenCurrentDay}
-        />
-
-        {/* All-day / multi-day events row (#15d) */}
-        <div className="flex border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="shrink-0 w-10 md:w-[60px] px-1 md:px-2 py-1 text-[10px] md:text-[11px] text-[var(--muted)]">
-            all-day
-          </div>
-          <div className="flex flex-1">
-            {visibleDays.map((day) => {
-              const dayAllDay = allDayRowItems.filter((item) => itemOverlapsDay(item, day))
-              return (
-                <div
-                  key={day.toISOString()}
-                  className="min-w-0 min-h-[28px] p-1 border-l"
-                  style={{ borderColor: 'var(--border)', flexGrow: dayFlexGrow(day), flexBasis: 0 }}
-                >
-                  {dayAllDay.map((item) => (
-                    <div
-                      key={item.id}
-                      data-calendar-item
-                      data-item-id={item.id}
-                      data-item-type={item.type}
-                      className="text-xs px-2 py-0.5 rounded mb-0.5 cursor-pointer truncate"
-                      style={{ backgroundColor: item.color || 'var(--accent)', color: getReadableTextColor(item.color) }}
-                      onClick={(e) =>
-                        onItemClick?.(item, (e.currentTarget as HTMLElement).getBoundingClientRect())
-                      }
-                      onDoubleClick={() => onItemDoubleClick?.(item)}
-                    >
-                      {item.title}
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
         <div
           ref={scrollRef}
-          onMouseDownCapture={() => { dismissingPopoverRef.current = popoverState !== null || itemPreviewOpen }}
-          className="flex-1 overflow-y-auto overflow-x-hidden"
+          onMouseDownCapture={() => {
+            // The first press while a popover, preview or the editor is open only closes it.
+            dismissingPopoverRef.current = popoverState !== null || itemPreviewOpen || useUIStore.getState().editFormOpen
+          }}
+          className="meow-scroller flex-1 overflow-y-auto overflow-x-auto"
         >
-          <div className="flex min-h-0">
-            <TimeColumn hourHeight={hourHeight} startHour={startHour} endHour={endHour} />
+          <div className="meow-gridin" style={{ '--cols': visibleDays.length } as React.CSSProperties}>
+            <div className="meow-ghead">
+              <WeekHeader
+                days={visibleDays}
+                showWeekNumbers={showWeekNumbers}
+                widenCurrentDay={widenCurrentDay}
+              />
 
-            {visibleDays.map((day) => {
-              const dayItems = timedItems
-                .filter((item) => itemOverlapsDay(item, day))
-                .map((item) => clampItemToDay(item, day))
-              return (
-                <div
-                  key={day.toISOString()}
-                  className="flex min-w-0"
-                  style={{ flexGrow: dayFlexGrow(day), flexBasis: 0 }}
-                >
-                  <DayColumn
-                    date={day}
-                    items={dayItems}
-                    hourHeight={hourHeight}
-                    startHour={startHour}
-                    endHour={endHour}
-                    draggingResolution={draggingResolution}
-                    dimPastEvents={dimPastEvents}
-                    isToday={isToday(day)}
-                    onTimeSlotClick={handleTimeSlotClick}
-                    onItemClick={onItemClick}
-                    onItemDoubleClick={onItemDoubleClick}
-                    onItemResize={onItemResize}
-                    onRoutineCheckboxClick={onRoutineCheckboxClick}
-                    onTaskCheckboxClick={onTaskCheckboxClick}
-                  />
-                </div>
-              )
-            })}
+              {/* All-day / multi-day events row (#15d) */}
+              <div className="meow-gall">
+                <div className="meow-corner">all day</div>
+                {visibleDays.map((day) => {
+                  const dayAllDay = allDayRowItems.filter((item) => itemOverlapsDay(item, day))
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={cn('meow-ac', isToday(day) && 'is-today')}
+                      style={{ flexGrow: dayFlexGrow(day) }}
+                    >
+                      {dayAllDay.map((item) => (
+                        <div
+                          key={item.id}
+                          data-calendar-item
+                          data-item-id={item.id}
+                          data-item-type={item.type}
+                          className="meow-chip"
+                          style={{ '--c': item.color || 'var(--accent)' } as React.CSSProperties}
+                          onClick={(e) =>
+                            onItemClick?.(item, (e.currentTarget as HTMLElement).getBoundingClientRect())
+                          }
+                          onDoubleClick={() => onItemDoubleClick?.(item)}
+                        >
+                          {item.title}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div ref={bodyRef} className="flex min-h-0">
+              <TimeColumn
+                hourHeight={hourHeight}
+                startHour={startHour}
+                endHour={endHour}
+                showNow={visibleDays.some((day) => isToday(day))}
+              />
+
+              {visibleDays.map((day) => {
+                const dayItems = timedItems
+                  .filter((item) => itemOverlapsDay(item, day))
+                  .map((item) => clampItemToDay(item, day))
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className="meow-daywrap"
+                    style={{ flexGrow: dayFlexGrow(day) }}
+                  >
+                    <DayColumn
+                      date={day}
+                      items={dayItems}
+                      hourHeight={hourHeight}
+                      startHour={startHour}
+                      endHour={endHour}
+                      draggingResolution={draggingResolution}
+                      dimPastEvents={dimPastEvents}
+                      isToday={isToday(day)}
+                      onTimeSlotClick={handleTimeSlotClick}
+                      onItemClick={onItemClick}
+                      onItemDoubleClick={onItemDoubleClick}
+                      onItemResize={onItemResize}
+                      onRoutineCheckboxClick={onRoutineCheckboxClick}
+                      onTaskCheckboxClick={onTaskCheckboxClick}
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -460,15 +520,10 @@ function WeekHeader({ days, showWeekNumbers = false, widenCurrentDay = false }: 
   const weekNumber = days.length > 0 ? getISOWeek(days[0]!) : null
 
   return (
-    <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
-      <div className="shrink-0 flex items-center justify-center w-10 md:w-[60px]">
+    <div className="meow-dhrow">
+      <div className="meow-corner">
         {showWeekNumbers && weekNumber !== null && (
-          <span
-            className="text-[10px] font-medium text-[var(--muted)]"
-            title={`Week ${weekNumber}`}
-          >
-            W{weekNumber}
-          </span>
+          <span title={`Week ${weekNumber}`}>W{weekNumber}</span>
         )}
       </div>
 
@@ -480,32 +535,17 @@ function WeekHeader({ days, showWeekNumbers = false, widenCurrentDay = false }: 
         return (
           <div
             key={day.toISOString()}
-            className={cn(
-              'min-w-0 flex flex-col items-center py-2',
-              'border-l border-[var(--border)]'
-            )}
-            style={{ flexGrow: widenCurrentDay && today ? 1.6 : 1, flexBasis: 0 }}
+            className={cn('meow-dh', today && 'is-today')}
+            style={{ flexGrow: widenCurrentDay && today ? 1.6 : 1 }}
           >
-            <span
-              className={cn(
-                'text-xs font-medium uppercase',
-                today ? 'text-[var(--accent)]' : 'text-[var(--muted)]'
-              )}
-            >
-              {dayName}
-            </span>
-
-            <span
-              className={cn(
-                'flex items-center justify-center mt-0.5',
-                'w-7 h-7 rounded-full text-sm font-semibold',
-                today
-                  ? 'bg-[var(--accent)] text-[var(--bg)]'
-                  : 'text-[var(--fg)]'
-              )}
-            >
-              {dayNum}
-            </span>
+            <span className="meow-dow">{dayName}</span>
+            {today ? (
+              <span className="meow-thead" aria-label={`Today, ${dayNum}`}>
+                <TodayHead num={dayNum} size={24} />
+              </span>
+            ) : (
+              <span className="meow-dn">{dayNum}</span>
+            )}
           </div>
         )
       })}

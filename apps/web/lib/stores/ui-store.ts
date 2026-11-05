@@ -10,12 +10,26 @@ interface PreviewPopover {
 }
 
 /**
- * The panels are mutually exclusive — only one occupies the left drawer /
- * main area at a time. `activePanel` is the single source of truth; the
+ * The panels are mutually exclusive — only one occupies the right-hand drawer
+ * at a time. The task panel is open by default (V2 design). `activePanel` is the single source of truth; the
  * `taskPanelOpen` / `bookingPanelOpen` booleans are read-only mirrors kept in
  * sync here (never set independently) so existing consumers keep working.
  */
 export type PanelId = 'tasks' | 'calendar' | 'booking' | 'schedules'
+
+/** Where the item being created or edited sits on screen, so the editor can open beside it. */
+export interface AnchorRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export interface RoutineDeletePromptState {
+  routineId: string
+  /** The occurrence's day (YYYY-MM-DD); null when it isn't known, which leaves only "all". */
+  date: string | null
+}
 
 interface UIState {
   // Panel states
@@ -42,6 +56,8 @@ interface UIState {
   editFormTab: 'event' | 'task' | 'routine'
   /** Seed data for create-mode (e.g. the clicked time slot). */
   editFormInitialData: Record<string, unknown> | null
+  /** The slot or item to open beside; null finds the item on the grid, or centres the editor. */
+  editFormAnchor: AnchorRect | null
 
   // Context menu
   contextMenu: {
@@ -50,6 +66,12 @@ interface UIState {
     itemType: 'event' | 'task' | 'routine' | null
     position: { x: number; y: number } | null
   }
+
+  /**
+   * A routine occurrence waiting for its delete scope. Right-click Delete and the Delete key open
+   * it; RoutineDeletePrompt asks "only this / this and all future / all" like the preview does.
+   */
+  routineDeletePrompt: RoutineDeletePromptState | null
 
   // Active settings panel
   activeSettingsPanel:
@@ -88,7 +110,8 @@ interface UIState {
     itemType: 'event' | 'task' | 'routine',
     tab?: 'event' | 'task' | 'routine',
     initialData?: Record<string, unknown> | null,
-    scope?: 'single' | 'future' | 'all' | 'custom' | null
+    scope?: 'single' | 'future' | 'all' | 'custom' | null,
+    anchor?: AnchorRect | null
   ) => void
   closeEditForm: () => void
   setEditFormTab: (tab: 'event' | 'task' | 'routine') => void
@@ -99,6 +122,8 @@ interface UIState {
   ) => void
   closeContextMenu: () => void
   setActiveSettingsPanel: (panel: UIState['activeSettingsPanel']) => void
+  openRoutineDeletePrompt: (prompt: RoutineDeletePromptState) => void
+  closeRoutineDeletePrompt: () => void
 }
 
 const initialPreviewPopover: PreviewPopover = {
@@ -127,8 +152,8 @@ function panelState(panel: PanelId) {
 export const useUIStore = create<UIState>()((set) => ({
   // Panel states
   sidebarOpen: true,
-  activePanel: 'calendar',
-  taskPanelOpen: false,
+  activePanel: 'tasks',
+  taskPanelOpen: true,
   bookingPanelOpen: false,
   settingsModalOpen: false,
   commandBarOpen: false,
@@ -147,9 +172,12 @@ export const useUIStore = create<UIState>()((set) => ({
   editFormItemType: null,
   editFormTab: 'event',
   editFormInitialData: null,
+  editFormAnchor: null,
 
   // Context menu
   contextMenu: { ...initialContextMenu },
+
+  routineDeletePrompt: null,
 
   // Active settings panel
   activeSettingsPanel: 'general',
@@ -200,7 +228,7 @@ export const useUIStore = create<UIState>()((set) => ({
   closePreviewPopover: () =>
     set({ previewPopover: { ...initialPreviewPopover } }),
 
-  openEditForm: (itemId, itemType, tab, initialData, scope) =>
+  openEditForm: (itemId, itemType, tab, initialData, scope, anchor) =>
     set({
       editFormOpen: true,
       editFormItemId: itemId,
@@ -208,6 +236,7 @@ export const useUIStore = create<UIState>()((set) => ({
       editFormItemType: itemType,
       editFormTab: tab ?? itemType,
       editFormInitialData: initialData ?? null,
+      editFormAnchor: anchor ?? null,
       previewPopover: { ...initialPreviewPopover },
     }),
 
@@ -218,6 +247,7 @@ export const useUIStore = create<UIState>()((set) => ({
       editFormScope: null,
       editFormItemType: null,
       editFormInitialData: null,
+      editFormAnchor: null,
     }),
 
   setEditFormTab: (tab) => set({ editFormTab: tab }),
@@ -230,4 +260,8 @@ export const useUIStore = create<UIState>()((set) => ({
   closeContextMenu: () => set({ contextMenu: { ...initialContextMenu } }),
 
   setActiveSettingsPanel: (panel) => set({ activeSettingsPanel: panel }),
+
+  openRoutineDeletePrompt: (prompt) => set({ routineDeletePrompt: prompt }),
+
+  closeRoutineDeletePrompt: () => set({ routineDeletePrompt: null }),
 }))

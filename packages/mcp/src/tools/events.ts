@@ -6,7 +6,7 @@ export function getEventToolDefinitions(): ToolDefinition[] {
     {
       name: 'list_events',
       description:
-        'List calendar events within a date range. Returns events from all connected Google Calendar accounts (or a specific calendar). Use ISO 8601 date strings for start/end.',
+        'List calendar events within a date range. Returns events from all connected Google Calendar accounts (or a specific calendar). Use ISO 8601 date strings for start/end. A meeting that reached several calendars or accounts (one invite sent to two of your accounts, a calendar shared with both) is returned once; its other copies are listed in `also_on` with their event_id, calendar_id, account_email, google_event_id and response_status. To reply as a specific account, call rsvp_event with the event_id of that copy. Set merge to false to get every copy as its own item.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -24,6 +24,11 @@ export function getEventToolDefinitions(): ToolDefinition[] {
             type: 'string',
             description:
               'Filter to events from a specific calendar by its UUID. Omit to return events from all active calendars.',
+          },
+          merge: {
+            type: 'boolean',
+            description:
+              'Default true: each meeting once, with its other copies in `also_on`. False returns one item per calendar copy.',
           },
         },
       },
@@ -76,7 +81,7 @@ export function getEventToolDefinitions(): ToolDefinition[] {
             type: 'string',
             enum: ['busy', 'free'],
             description:
-              'Whether this event blocks your calendar as busy or shows as free. Defaults to "busy".',
+              'Whether this event blocks your calendar as busy or shows as free. Defaults to "busy", or "free" for an all-day event, as Google does.',
           },
           privacy: {
             type: 'string',
@@ -234,7 +239,8 @@ export function getEventToolDefinitions(): ToolDefinition[] {
     },
     {
       name: 'rsvp_event',
-      description: 'Respond to an event invitation (accept, decline, or tentative)',
+      description:
+        'Respond to an event invitation (accept, decline, or tentative). On a Google calendar the reply goes to Google as the account the event copy came through; pass an event_id from `also_on` to answer as another account.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -254,6 +260,7 @@ export function getEventToolHandlers(client: PoolendarClient): Record<string, To
         start: (args.start as string | undefined) ?? new Date().toISOString(),
         end: (args.end as string | undefined) ?? new Date(Date.now() + 7 * 86400000).toISOString(),
         calendar_id: args.calendar_id as string | undefined,
+        merge: args.merge as boolean | undefined,
       })
       return JSON.stringify(events, null, 2)
     },

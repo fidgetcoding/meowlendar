@@ -8,7 +8,7 @@ import type {
   Calendar,
 } from '@poolendar/types'
 import { useCalendarStore } from '@/lib/stores/calendar-store'
-import { useUIStore } from '@/lib/stores/ui-store'
+import { useUIStore, type AnchorRect } from '@/lib/stores/ui-store'
 import { useCalendarContextActions } from '@/lib/hooks/use-calendar-context-actions'
 import { useUndoable } from '@/lib/hooks/use-undoable'
 import { CalendarGrid } from './CalendarGrid'
@@ -17,7 +17,8 @@ import { ContextMenu } from './ContextMenu'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
 import { parseRoutineItemId } from './grid-helpers'
 import { parseEventItemId, timeInZone, dateInZone } from '@/lib/recurrence'
-import { useRecurringEventChange } from '@/lib/hooks/use-events'
+import { useRecurringEventChange, type RsvpAnswer } from '@/lib/hooks/use-events'
+import { copyLabels, rsvpCopies, type AccountEmails } from './event-copies'
 import type { RecurrenceEditScope } from './RecurrenceEditDialog'
 
 interface CalendarWorkspaceProps {
@@ -28,6 +29,10 @@ interface CalendarWorkspaceProps {
   selfEmails: string[]
   userId: string | null
   currentDate: Date
+  /** Account id to email, to name the accounts a meeting reached. */
+  accountEmails?: AccountEmails
+  /** Answers an invitation for one copy of an event. */
+  onRsvp?: (eventId: string, answer: RsvpAnswer) => Promise<unknown>
 }
 
 function twoDigit(n: number): string {
@@ -45,6 +50,8 @@ export function CalendarWorkspace({
   selfEmails,
   userId,
   currentDate,
+  accountEmails = {},
+  onRsvp,
 }: CalendarWorkspaceProps) {
   const store = useCalendarStore()
   const { openEditForm } = useUIStore()
@@ -248,29 +255,36 @@ export function CalendarWorkspace({
     }
   }
 
+  /** Opens the editor for a new item, beside the slot it was made in. */
   function handleOpenFullForm(
     type: CalendarItemType,
     date: Date,
     startTime: Date,
-    endTime?: Date
+    endTime?: Date,
+    anchor?: AnchorRect,
+    title?: string
   ) {
     const end = endTime ?? new Date(startTime.getTime() + store.defaultTaskDuration * 60000)
+    const named = title ? { title } : {}
     if (type === 'event') {
       openEditForm(null, 'event', 'event', {
+        ...named,
         start_time: startTime.toISOString(),
         end_time: end.toISOString(),
         calendar_id: defaultCalendarId,
-      })
+      }, null, anchor)
     } else if (type === 'task') {
       openEditForm(null, 'task', 'task', {
+        ...named,
         scheduled_start: startTime.toISOString(),
         scheduled_end: end.toISOString(),
-      })
+      }, null, anchor)
     } else {
       openEditForm(null, 'routine', 'routine', {
+        ...named,
         start_time: toTimeString(startTime),
         end_time: toTimeString(end),
-      })
+      }, null, anchor)
     }
   }
 
@@ -283,7 +297,7 @@ export function CalendarWorkspace({
         : item.type === 'event'
           ? parseEventItemId(item.id).eventId
           : item.id
-    store.selectItem(selectionId, item.type)
+    store.selectItem(selectionId, item.type, item.type === 'routine' ? routineDateOf(item) : null)
     const calId =
       item.event?.calendar_id ?? item.task?.calendar_id ?? item.routine?.calendar_id ?? null
     const cal = calId ? calendars.find((c) => c.id === calId) : undefined
@@ -342,9 +356,14 @@ export function CalendarWorkspace({
     } else if (source.type === 'task' && source.task) {
       undoable.deleteTask(source.task)
     } else if (source.routine) {
-      undoable.deleteRoutine(source.routine)
+      undoable.deleteRoutineOccurrences(source.routine, routineDateOf(source), scope ?? { type: 'all' }, source.routineInstanceStatus)
     }
   }
+
+  // A merged meeting: the copy shown first, then the ones it hides.
+  const previewCopies = preview?.source.event
+    ? [preview.source.event, ...(preview.source.duplicates ?? []).flatMap((d) => (d.event ? [d.event] : []))]
+    : []
 
   return (
     <>
@@ -384,11 +403,16 @@ export function CalendarWorkspace({
         <PreviewPopover
           item={preview.item}
           anchorRect={preview.anchorRect}
+          alsoOn={copyLabels(previewCopies, calendars, accountEmails).slice(1)}
+          rsvpCopies={rsvpCopies(previewCopies, calendars, accountEmails)}
+          onRsvp={onRsvp}
           onClose={() => setPreview(null)}
           onEdit={(scope) => {
             const src = preview.source
+            const at = preview.anchorRect
             setPreview(null)
-            openEditForm(src.id, src.type, undefined, undefined, scope?.type ?? null)
+            const anchor = at ? { left: at.left, top: at.top, width: at.width, height: at.height } : null
+            openEditForm(src.id, src.type, undefined, undefined, scope?.type ?? null, anchor)
           }}
           onDelete={(scope) => {
             deleteBySource(preview.source, scope)
@@ -404,7 +428,7 @@ export function CalendarWorkspace({
           onSkip={() => {
             const src = preview.source
             if (src.routine)
-              undoable.skipRoutineInstance(src.routine.id, routineDateOf(src))
+              undoable.skipRoutineInstance(src.routine.id, routineDateOf(src), src.routineInstanceStatus)
             setPreview(null)
           }}
         />

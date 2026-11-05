@@ -450,3 +450,117 @@ describe('migration 030', () => {
     expect(after).toBe(before)
   })
 })
+
+describe('created_via on create', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function mockRpc(apiKeyId?: string) {
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({})
+    if (apiKeyId) {
+      vi.mocked(authenticate).mockResolvedValue({
+        userId: TEST_USER_ID,
+        supabase: supabase as unknown as AuthResult['supabase'],
+        apiKeyId,
+      })
+    }
+    supabase.rpc = vi.fn().mockResolvedValue({ data: { id: 't-new', title: 'A' }, error: null })
+    return supabase
+  }
+
+  const sentTask = (supabase: SupabaseMockWithRpc) =>
+    (supabase.rpc?.mock.calls[0]?.[1] as { p_task: Record<string, unknown> }).p_task
+
+  it("records 'api' when an API key created the task (the MCP's create_task)", async () => {
+    const supabase = mockRpc('key-1')
+    expect((await POST(createRequest('POST', '/api/tasks', { title: 'A' }))).status).toBe(201)
+    expect(sentTask(supabase).created_via).toBe('api')
+  })
+
+  it("records 'app' when a browser session created the task", async () => {
+    const supabase = mockRpc()
+    expect((await POST(createRequest('POST', '/api/tasks', { title: 'A' }))).status).toBe(201)
+    expect(sentTask(supabase).created_via).toBe('app')
+  })
+
+  it('never takes created_via from the request body', async () => {
+    const session = mockRpc()
+    await POST(createRequest('POST', '/api/tasks', { title: 'A', created_via: 'api' }))
+    expect(sentTask(session).created_via).toBe('app')
+
+    vi.clearAllMocks()
+    const key = mockRpc('key-1')
+    await POST(createRequest('POST', '/api/tasks', { title: 'A', created_via: 'app' }))
+    expect(sentTask(key).created_via).toBe('api')
+  })
+})
+
+describe('migration 042', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/042_task_created_via.sql'), 'utf8')
+  const previous = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/036_task_create_browser_fields.sql'), 'utf8')
+
+  function createFunctionBody(text: string): string {
+    const start = text.indexOf('create or replace function public.create_task_with_children')
+    return text.slice(start, text.indexOf('$$;', start))
+  }
+
+  it('adds a nullable created_via column limited to app and api', () => {
+    expect(sql).toMatch(/add column if not exists created_via text;/)
+    expect(sql).not.toMatch(/created_via text not null/)
+    expect(sql).toMatch(/check \(created_via in \('app', 'api'\)\)/)
+    // Additive only: nothing is backfilled or dropped.
+    expect(sql).not.toMatch(/\bupdate public\.tasks\b|\bdrop (column|table)\b/i)
+  })
+
+  it('makes the create RPC write created_via and changes nothing else', () => {
+    const normalize = (text: string) => text.replace(/\s+/g, ' ')
+    const after = normalize(createFunctionBody(sql))
+    expect(after).toContain("is_split, created_via ) values")
+    expect(after).toContain("coalesce((p_task->>'is_split')::boolean, false), p_task->>'created_via' )")
+    const reverted = after
+      .replace('is_split, created_via ) values', 'is_split ) values')
+      .replace("coalesce((p_task->>'is_split')::boolean, false), p_task->>'created_via' )", "coalesce((p_task->>'is_split')::boolean, false) )")
+    expect(reverted).toBe(normalize(createFunctionBody(previous)))
+  })
+})
+
+describe('POST /api/tasks with the id the page chose', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const CLIENT_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+
+  it('passes the id to the create RPC', async () => {
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({ tasks: { data: null, error: null } })
+    supabase.rpc = vi.fn().mockResolvedValue({ data: { id: CLIENT_ID, title: 'A' }, error: null })
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'A', id: CLIENT_ID }))
+    expect(res.status).toBe(201)
+    const sent = (supabase.rpc.mock.calls[0]![1] as { p_task: Record<string, unknown> }).p_task
+    expect(sent.id).toBe(CLIENT_ID)
+  })
+
+  it('answers with the existing task for a resend, without a second create', async () => {
+    const supabase: SupabaseMockWithRpc = mockAuthWithTables({ tasks: { data: { id: CLIENT_ID, title: 'A' }, error: null } })
+    supabase.rpc = vi.fn()
+    const res = await POST(createRequest('POST', '/api/tasks', { title: 'A', id: CLIENT_ID }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).id).toBe(CLIENT_ID)
+    expect(supabase.rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('migration 044', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/044_task_create_client_id.sql'), 'utf8')
+  const previous = readFileSync(resolve(__dirname, '../../../../../../supabase/migrations/042_task_created_via.sql'), 'utf8')
+  const body = (text: string) => {
+    const start = text.indexOf('create or replace function public.create_task_with_children')
+    return text.slice(start, text.indexOf('$$;', start)).replace(/\s+/g, ' ')
+  }
+
+  it("makes the create RPC use p_task's id when given, and changes nothing else", () => {
+    const after = body(sql)
+    expect(after).toContain('insert into public.tasks ( id, user_id, title,')
+    expect(after).toContain("coalesce((p_task->>'id')::uuid, gen_random_uuid()), v_user_id,")
+    const reverted = after
+      .replace('insert into public.tasks ( id, user_id, title,', 'insert into public.tasks ( user_id, title,')
+      .replace("coalesce((p_task->>'id')::uuid, gen_random_uuid()), v_user_id,", 'v_user_id,')
+    expect(reverted).toBe(body(previous))
+  })
+})

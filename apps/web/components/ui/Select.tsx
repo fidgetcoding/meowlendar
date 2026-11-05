@@ -138,7 +138,9 @@ function Select({
         id={id}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-controls={listboxId}
+        // Only while the list exists. It is never in the server HTML, so a useId that differs
+        // between server and browser (when the tree above renders differently) can't mismatch.
+        aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => (open ? closeDropdown() : openDropdown())}

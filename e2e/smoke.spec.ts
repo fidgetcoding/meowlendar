@@ -10,6 +10,6 @@ test.describe('smoke', () => {
     await expect(
       page.getByRole('button', { name: /continue with google/i })
     ).toBeVisible()
-    await expect(page.getByText(/purrrfect calendar/i)).toBeVisible()
+    await expect(page.getByText(/purrfect calendar/i)).toBeVisible()
   })
 })

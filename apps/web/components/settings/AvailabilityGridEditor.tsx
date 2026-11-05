@@ -200,7 +200,7 @@ export function AvailabilityGridEditor({
       </div>
 
       <p className="mt-1 text-[10px] text-[var(--muted)]">
-        {SLOT_MINUTES}-minute cells · showing {slotToTime(FIRST_SLOT)}–{slotToTime(LAST_SLOT)}.
+        {SLOT_MINUTES}-minute cells · showing {slotToTime(FIRST_SLOT)} - {slotToTime(LAST_SLOT)}.
         Full-day painting is preserved even if outside this view.
       </p>
       <input type="hidden" data-testid="painted-count" value={paintedCount(painted)} readOnly />

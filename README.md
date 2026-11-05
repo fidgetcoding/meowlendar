@@ -10,6 +10,8 @@ Tell your AI agent to put a task on Thursday at 2 and it lands on the grid, with
 
 The site has the [setup steps](https://meowlendar.com/setup/) too.
 
+**Try the demo.** Local setup makes a demo account with a sample week already in it. Sign in with `demo@meowlendar.com` / `meowlendar`, or click Sign up to make your own. It only exists on your machine, since there's no hosted Meowlendar.
+
 **Want the real story?** [ESSENCE.md](ESSENCE.md) is the one-pager. [EVOLUTION.md](EVOLUTION.md) has the best screw-up in the whole collection: 1,255 passing tests on an app where nothing worked.
 
 ## What it is
@@ -44,7 +46,7 @@ DO THESE YOURSELF
 2. Clone the repo and run pnpm install.
 
 3. Run pnpm setup:local.
-   Verify: it exits 0 and apps/web/.env.local exists. If Supabase reports a container as "unhealthy", run it once more.
+   Verify: it exits 0 and apps/web/.env.local exists. If Supabase reports a container as "unhealthy", run it once more. It also creates the demo account demo@meowlendar.com / meowlendar with a sample week. Add --no-demo to skip it.
 
 4. Start pnpm dev in the background.
    Verify: curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login prints 200.
@@ -54,7 +56,7 @@ DO THESE YOURSELF
 
 STOP AND ASK ME
 
-6. Ask me to open http://localhost:3000, click Sign up, create an account, then go to Settings > API Keys, click Generate, and paste the pk_ key to you.
+6. Ask me to open http://localhost:3000 and either sign in with demo@meowlendar.com / meowlendar to see a sample week, or click Sign up to create my own account. Then ask me to go to Settings > API Keys, click Generate, and paste the pk_ key to you.
    Verify: curl -s -H "Authorization: Bearer <key>" http://localhost:3000/api/calendars returns JSON containing "local_calendars".
 
 THEN WIRE THE MCP
@@ -82,9 +84,9 @@ Finish by telling me which steps passed, which were skipped, and what is still r
    ```bash
    git clone https://github.com/fidgetcoding/meowlendar && cd meowlendar && pnpm install
    ```
-3. **Run `pnpm setup:local`.** Every line should start with `ok`, and it writes `apps/web/.env.local`.
-4. **Run `pnpm dev`** and open `http://localhost:3000`. You should see the walking cats.
-5. **Click Sign up** and use any email and password. No email gets sent locally. You land on the week view, with a local calendar ready.
+3. **Run `pnpm setup:local`.** Every line should start with `ok`, and it writes `apps/web/.env.local`. It also makes the demo account (`--no-demo` skips it, `--reset-demo` gives it a fresh week).
+4. **Run `pnpm dev`** and open `http://localhost:3000`. You should see the sign-in page with a cat asleep on it.
+5. **Sign in with `demo@meowlendar.com` / `meowlendar`** to look around a sample week, or **click Sign up** and use any email and password to make your own. No email gets sent locally. You land on the week view, with a local calendar ready.
 6. **Connect your agent.**
    - `pnpm --filter meowlendar-mcp build`
    - In the app: **Settings > API Keys**, name a key, **Generate**, copy it. It's shown once.
@@ -103,7 +105,7 @@ Why do some internals say `poolendar`? That's the old name. Renaming the rest is
 
 ## Google sign-in and calendar sync
 
-**Google is optional, but each self-hosted installation needs its own Google Cloud OAuth client** if you want the **Continue with Google** button or Google Calendar sync. The button is not configured by the default local setup; clicking it before setup returns a provider-not-enabled error. For a local calendar without Google, use **Sign up** with an email and password instead.
+**Google is optional, but each self-hosted installation needs its own Google Cloud OAuth client** if you want the **Continue with Google** button or Google Calendar sync. The button is not configured by the default local setup; until it is, clicking it just shows a note pointing to Setup step 7. For a local calendar without Google, use **Sign up** with an email and password instead.
 
 For Google, follow the complete [Google setup in DEPLOY.md](DEPLOY.md#2-google-cloud-setup):
 

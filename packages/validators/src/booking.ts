@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isoInstant } from './instant'
 import { partialUpdate } from './partial'
 
 const weeklyAvailabilitySchema = z.object({
@@ -29,5 +30,5 @@ export const bookSlotSchema = z.object({
   booker_name: z.string().min(1).max(200).regex(/^[^\r\n]*$/, 'Name cannot contain line breaks'),
   booker_email: z.string().email(),
   booker_notes: z.string().max(2000).nullable().optional(),
-  start_time: z.string().datetime(),
+  start_time: isoInstant(),
 })

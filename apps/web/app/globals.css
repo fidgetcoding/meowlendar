@@ -1,34 +1,124 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
+/* --------------------------------------------------------------------------
+ * Meowlendar V2 design tokens (approved r4 design, locked 2026-11-05).
+ * Light is the default. Dark only ever comes from the user's own toggle,
+ * never from the OS.
+ * ------------------------------------------------------------------------ */
+
 :root {
   color-scheme: light;
-  --bg: #faf8f4;
-  --fg: #211d17;
-  --muted: #857c6f;
-  --border: #e6dfd3;
-  --surface: #ffffff;
-  --surface-hover: #f3eee4;
-  --surface-translucent: rgba(255, 255, 255, 0.6);
-  --accent: #d97706;
-  --accent-hover: #c2680a;
-  --destructive: #dc2626;
-  --success: #16a34a;
+
+  /* paper and ink */
+  --surf: #ffffff;
+  --paper: #fffdf9;
+  --panel: #ffffff;
+  --ink: #21180e;
+  --ink2: #4b3f30;
+  --mut: #8b7d69;
+  --line: #f0e8db;
+  --line2: #e3d7c3;
+  --lit: #fff6e2;
+
+  /* periwinkle #6f7ae0 and the tints the design derives from it */
+  --peri: #6f7ae0;
+  --perid: #515dcb;
+  --peril: #eaecfe;
+  --perip: #f4f5ff;
+  --perik: #4f5482;
+  --perie: #b6bcf1;
+  --railon: #ffffff;
+  --todayt: #eeeffb;
+
+  /* sun, loaf, done */
+  --sun: #ffc24a;
+  --amberd: #b86400;
+  --agc: #b86400;
+  --red: #c8432f;
+  --nowtx: #ffffff;
+  --duetx: #7a4a00;
+  --cat: #e88a2c;
+  --catd: #b55c16;
+  --catl: #f9c27e;
+  --done: #3dab63;
+
+  /* the four event colours */
+  --c-my: #e8930c;
+  --c-work: #5a68d4;
+  --c-home: #cf5d78;
+  --c-gym: #2b93b4;
+  --evm: 13%;
+  --chm: 16%;
+  --livem: 22%;
+
+  /* today: the yellow cat head behind the date */
+  --headc: #ffc24a;
+  --heade: #ffe4a6;
+  --headn: #21180e;
+  --todayk: #b86400;
+
+  /* the loaf, 140% of r2 M4 */
+  --loaf: 1.4;
+
+  --fd: var(--font-fraunces), Georgia, serif;
+  --fu: var(--font-figtree), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --meow-num-font: var(--fd);
+  --meow-num-weight: 600;
+  --ease: cubic-bezier(0.22, 0.7, 0.18, 1);
+
+  /* app-wide tokens, mapped onto the design */
+  --bg: var(--surf);
+  --fg: var(--ink);
+  --muted: var(--mut);
+  --border: var(--line2);
+  --surface: var(--panel);
+  --surface-hover: var(--lit);
+  --surface-translucent: rgba(255, 255, 255, 0.72);
+  --accent: var(--perid);
+  --accent-hover: #4651bd;
+  --destructive: var(--red);
+  --success: var(--done);
 }
 
+/* dark: deep ink with a periwinkle cast */
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0a0a0a;
-  --fg: #ededed;
-  --muted: #888;
-  --border: #222;
-  --surface: #141414;
-  --surface-hover: #1a1a1a;
-  --surface-translucent: rgba(20, 20, 20, 0.5);
-  --accent: #f9a825;
-  --accent-hover: #f59b20;
-  --destructive: #ef4444;
-  --success: #22c55e;
+
+  --surf: #15132a;
+  --paper: #1a1733;
+  --panel: #1e1b38;
+  --ink: #f3f1ff;
+  --ink2: #cfcbea;
+  --mut: #8e89b4;
+  --line: #28244a;
+  --line2: #3a355f;
+  --lit: #262248;
+
+  --peri: #838de4;
+  --perid: #4c549f;
+  --peril: #2a2951;
+  --perip: #242345;
+  --perik: #abb2ed;
+  --perie: #b3b9ef;
+  --railon: #38396e;
+  --todayt: #232346;
+
+  --amberd: #f2a64a;
+  --agc: #f5b25e;
+  --red: #ff8170;
+  --nowtx: #241300;
+  --duetx: #ffd27a;
+  --done: #4cc277;
+  --evm: 24%;
+  --chm: 26%;
+  --livem: 34%;
+
+  --todayk: #ffc24a;
+
+  --surface-translucent: rgba(30, 27, 56, 0.6);
+  --accent: var(--peri);
+  --accent-hover: #9aa2ea;
 }
 
 html {
@@ -38,29 +128,19 @@ html {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--fu);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 * {
   box-sizing: border-box;
 }
 
-@keyframes float {
-  0% {
-    transform: translateY(0) rotate(0deg);
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.09;
-  }
-  92% {
-    opacity: 0.09;
-  }
-  100% {
-    transform: translateY(-110vh) rotate(360deg);
-    opacity: 0;
-  }
+.font-display {
+  font-family: var(--fd);
+  font-weight: 400;
+  letter-spacing: -0.02em;
 }
 
 @keyframes fade-in-up {
@@ -74,185 +154,12 @@ body {
   }
 }
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 40px 10px rgba(249, 168, 37, 0.08);
-  }
-  50% {
-    box-shadow: 0 0 60px 20px rgba(249, 168, 37, 0.18);
-  }
-}
-
-@keyframes shine-sweep {
-  0%, 100% {
-    transform: translateX(-150%);
-  }
-  50% {
-    transform: translateX(150%);
-  }
-}
-
-.animate-float {
-  animation: float linear infinite;
-}
-
 .animate-fade-in-up {
   animation: fade-in-up 0.8s ease-out both;
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 4s ease-in-out infinite;
-}
-
-.cat-logo::after {
-  content: '';
-  position: absolute;
-  inset: 5%;
-  background: linear-gradient(
-    105deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.1) 42%,
-    rgba(255, 255, 255, 0.18) 50%,
-    rgba(255, 255, 255, 0.1) 58%,
-    transparent 70%
-  );
-  animation: shine-sweep 5s ease-in-out infinite;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* --------------------------------------------------------------------------
- * Login scene — cat parade
- * ------------------------------------------------------------------------ */
-
-.login-scene {
-  background: linear-gradient(145deg, #fdf3e3 0%, #faf8f4 50%, #f7e8d2 100%);
-}
-
-[data-theme='dark'] .login-scene {
-  background: linear-gradient(145deg, #16100a 0%, #0a0a0a 50%, #0d0a06 100%);
-}
-
-/* Walker: outer span crosses the viewport, inner span does the gait bob. */
-@keyframes cat-walk {
-  from {
-    transform: translateX(-12vw);
-  }
-  to {
-    transform: translateX(112vw);
-  }
-}
-
-@keyframes cat-gait {
-  0%, 100% {
-    transform: translateY(0) rotate(-2deg);
-  }
-  25% {
-    transform: translateY(-3px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-1px) rotate(2deg);
-  }
-  75% {
-    transform: translateY(-4px) rotate(0deg);
-  }
-}
-
-.cat-walker {
-  position: absolute;
-  left: 0;
-  animation: cat-walk linear infinite;
-  will-change: transform;
-}
-
-.cat-gait {
-  display: inline-block;
-  animation: cat-gait 0.7s ease-in-out infinite;
-}
-
-@keyframes yarn-roll {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.yarn-roll {
-  display: inline-block;
-  animation: yarn-roll 1.6s linear infinite;
-}
-
-/* Pounce for the yarn-chasing cat: a livelier gait. */
-@keyframes cat-pounce {
-  0%, 100% {
-    transform: translateY(0) rotate(-3deg);
-  }
-  40% {
-    transform: translateY(-9px) rotate(4deg);
-  }
-  60% {
-    transform: translateY(-3px) rotate(1deg);
-  }
-}
-
-.cat-pounce {
-  display: inline-block;
-  animation: cat-pounce 0.9s ease-in-out infinite;
-}
-
-/* Licking cat: tongue flicks out toward whatever it's grooming. */
-@keyframes cat-lick {
-  0%, 55%, 100% {
-    transform: scaleY(0.2) translateY(-2px);
-    opacity: 0;
-  }
-  65%, 85% {
-    transform: scaleY(1) translateY(2px);
-    opacity: 1;
-  }
-}
-
-.cat-tongue {
-  position: absolute;
-  width: 7px;
-  height: 12px;
-  border-radius: 0 0 6px 6px;
-  background: #f472b6;
-  transform-origin: top center;
-  animation: cat-lick 2.4s ease-in-out infinite;
-}
-
-@keyframes cat-head-bob {
-  0%, 55%, 100% {
-    transform: rotate(0deg);
-  }
-  70% {
-    transform: rotate(-8deg) translateY(2px);
-  }
-  85% {
-    transform: rotate(-4deg) translateY(1px);
-  }
-}
-
-.cat-head-bob {
-  display: inline-block;
-  animation: cat-head-bob 2.4s ease-in-out infinite;
-  transform-origin: bottom center;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .animate-float,
-  .animate-pulse-glow,
-  .cat-logo::after,
-  .cat-walker,
-  .cat-gait,
-  .cat-pounce,
-  .yarn-roll,
-  .cat-tongue,
-  .cat-head-bob {
+  .animate-fade-in-up {
     animation: none !important;
   }
 }

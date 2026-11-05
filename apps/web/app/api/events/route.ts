@@ -1,12 +1,14 @@
 
 import { readAll } from '@/lib/read-all'
 import { NextRequest, NextResponse } from 'next/server'
-import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
+import { authenticate, isAuthError, validationError, type AuthResult } from '../../../lib/auth/helpers'
 import { pushEvent } from '../../../lib/google/sync'
+import { alreadyCreated, clientIdOf, UNIQUE_VIOLATION } from '../../../lib/client-id'
 import { createEventSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
 import { eventsInWindowFilter, expandOccurrences, isValidRecurrenceRule } from '../../../lib/recurrence'
-import type { Calendar, CalendarEvent, CalendarItem, RoutineInstanceStatus } from '@poolendar/types'
+import type { Calendar, CalendarEvent, CalendarItem, EventCopyRef, RoutineInstanceStatus } from '@poolendar/types'
+import { copyRank, mergeCopies, ownResponse } from '../../../lib/event-merge'
 
 // The kinds `GET /api/events` can return. `events` is always included (this is
 // the events endpoint); `tasks` and `routines` are on by default and can be
@@ -92,21 +94,25 @@ export async function GET(request: NextRequest) {
     }
     const windowStart = new Date(start)
     const windowEnd = new Date(end)
+    const eventItems: EventItem[] = []
     for (const e of (data ?? []) as CalendarEvent[]) {
       if (!e.recurrence_rule) {
-        items.push({ ...e, kind: 'event' } as CalendarItem)
+        eventItems.push({ ...e, kind: 'event' })
         continue
       }
       for (const occurrence of expandOccurrences(e, windowStart, windowEnd)) {
-        items.push({
+        eventItems.push({
           ...e,
           kind: 'event',
           start_time: occurrence.start.toISOString(),
           end_time: occurrence.end.toISOString(),
           occurrence_start: occurrence.start.toISOString(),
-        } as CalendarItem)
+        })
       }
     }
+    // A meeting on several calendars or accounts comes back once, as on the grid,
+    // unless `merge=false` asks for every row.
+    items.push(...(searchParams.get('merge') === 'false' ? eventItems : await mergeEventCopies(supabase, userId, eventItems)))
   }
 
   // --- Scheduled tasks (spec #22) -------------------------------------------
@@ -182,11 +188,51 @@ export async function GET(request: NextRequest) {
   ))
 }
 
+type EventItem = Extract<CalendarItem, { kind: 'event' }>
+
+/**
+ * Keeps one copy of each meeting by the grid's rules (lib/event-merge) and lists the
+ * others on it as `also_on`, with the account each came through and your answer there.
+ */
+async function mergeEventCopies(supabase: AuthResult['supabase'], userId: string, events: EventItem[]): Promise<EventItem[]> {
+  if (new Set(events.map((e) => e.calendar_id)).size < 2) return events
+  const [{ data: calendars }, { data: accounts }] = await Promise.all([
+    supabase.from('calendars').select('id, source, access_role, is_primary, google_account_id').eq('user_id', userId),
+    supabase.from('google_accounts').select('id, email').eq('user_id', userId),
+  ])
+  const calendarById = new Map(((calendars ?? []) as Pick<Calendar, 'id' | 'source' | 'access_role' | 'is_primary' | 'google_account_id'>[]).map((c) => [c.id, c]))
+  const emailOf = new Map(((accounts ?? []) as { id: string; email: string }[]).map((a) => [a.id, a.email]))
+  const { shown, hidden } = mergeCopies(
+    events,
+    (e) => ({ calendarId: e.calendar_id, icalUid: e.ical_uid, title: e.title, start: Date.parse(e.start_time), end: Date.parse(e.end_time) }),
+    (e) => copyRank(e, calendarById.get(e.calendar_id)),
+  )
+  return shown.map((e) => {
+    const copies = hidden.get(e)
+    if (!copies) return e
+    const also_on: EventCopyRef[] = copies.map((copy) => {
+      const accountId = calendarById.get(copy.calendar_id)?.google_account_id
+      const accountEmail = accountId ? emailOf.get(accountId) ?? null : null
+      return {
+        event_id: copy.id,
+        calendar_id: copy.calendar_id,
+        account_email: accountEmail,
+        google_event_id: copy.google_event_id,
+        response_status: ownResponse(copy, accountEmail),
+      }
+    })
+    return { ...e, also_on }
+  })
+}
+
 function effectiveStart(item: CalendarItem): string {
   if (item.kind === 'event') return item.start_time
   if (item.kind === 'task') return item.scheduled_start ?? ''
   return item.scheduled_start
 }
+
+const hasField = (body: unknown, key: string) =>
+  Boolean(body) && typeof body === 'object' && (body as Record<string, unknown>)[key] !== undefined
 
 export async function POST(request: NextRequest) {
   const auth = await authenticate(request)
@@ -230,8 +276,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'recurrence_rule is not a valid RRULE' }, { status: 422 })
   }
 
+  // The same create sent twice (the page resends it while unloading) makes one row.
+  const clientId = clientIdOf(body)
+  if (clientId) {
+    const already = await alreadyCreated(supabase, 'events', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
+
   // Build the event row
   const eventRow = {
+    ...(clientId ? { id: clientId } : {}),
     user_id: userId,
     calendar_id: input.calendar_id,
     title: input.title,
@@ -242,7 +296,9 @@ export async function POST(request: NextRequest) {
     is_all_day: input.is_all_day,
     location: input.location ?? null,
     color_override: input.color_override ?? null,
-    visibility: input.visibility,
+    // Unless the caller says, an all-day event shows as free (a birthday shouldn't block a whole
+    // day of bookings) and a timed one as busy, as Google does.
+    visibility: hasField(body, 'visibility') ? input.visibility : input.is_all_day ? 'free' : 'busy',
     privacy: input.privacy,
     recurrence_rule: input.recurrence_rule ?? null,
     attendees: input.attendees,
@@ -258,6 +314,10 @@ export async function POST(request: NextRequest) {
     .select()
     .single()
 
+  if (insertError?.code === UNIQUE_VIOLATION && clientId) {
+    const already = await alreadyCreated(supabase, 'events', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
   if (insertError || !event) {
     return NextResponse.json(
       { error: 'Failed to create event' },

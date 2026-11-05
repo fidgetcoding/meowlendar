@@ -5,6 +5,8 @@ export interface EventAttendee {
   email: string
   name?: string
   response_status: 'needsAction' | 'accepted' | 'declined' | 'tentative'
+  /** This guest is the Google account the copy was synced from. */
+  self?: boolean
 }
 
 export interface EventReminder {
@@ -16,6 +18,8 @@ export interface CalendarEvent {
   user_id: string
   calendar_id: string
   google_event_id: string | null
+  /** Google's iCalUID: the same for every copy of one meeting, across accounts. */
+  ical_uid?: string | null
   title: string
   notes: string | null
   start_time: string

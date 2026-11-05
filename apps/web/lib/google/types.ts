@@ -13,6 +13,7 @@ export interface GoogleEventAttendee {
   email: string
   displayName?: string
   responseStatus?: EventAttendee['response_status']
+  self?: boolean
 }
 
 export interface GoogleEventReminders {

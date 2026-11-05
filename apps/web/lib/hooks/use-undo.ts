@@ -28,6 +28,12 @@ export interface UndoOperation {
   timestamp: number
   /** The actual mutation function to execute after grace period */
   execute: () => Promise<void>
+  /**
+   * Commits the operation while the page unloads: its final write, sent so the browser delivers
+   * it after the page is gone (see lib/undo/unload-commit). A destructive operation without one
+   * runs at once instead of waiting out a grace window it could lose.
+   */
+  commitOnUnload?: () => void
   /** The rollback function to undo optimistic state */
   rollback: () => void
 }
@@ -63,6 +69,8 @@ export function useUndo(gracePeriodMs = 30_000) {
   const undoStackRef = useRef<UndoOperation[]>([])
   const redoStackRef = useRef<UndoOperation[]>([])
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map())
+  /** Immediate operations whose write hasn't come back yet (a create just made, say). */
+  const inflightRef = useRef<Map<string, UndoOperation>>(new Map())
 
   // Reactive state for consumers
   const [canUndo, setCanUndo] = useState(false)
@@ -111,7 +119,7 @@ export function useUndo(gracePeriodMs = 30_000) {
       // Clear redo stack on any new operation
       redoStackRef.current = []
 
-      if (DESTRUCTIVE_TYPES.has(op.type)) {
+      if (DESTRUCTIVE_TYPES.has(op.type) && op.commitOnUnload) {
         // Grace period: delay execution, allow cancel
         const timeoutId = setTimeout(() => {
           pendingRef.current.delete(op.id)
@@ -127,8 +135,12 @@ export function useUndo(gracePeriodMs = 30_000) {
 
         pendingRef.current.set(op.id, { operation: op, timeoutId })
       } else {
-        // Non-destructive: execute immediately
-        op.execute().catch((err) => {
+        // Non-destructive: execute immediately. Until the write settles, a page unload resends it
+        // through the operation's unload path (a create typed and then reloaded straight away).
+        if (op.commitOnUnload) inflightRef.current.set(op.id, op)
+        const settled = () => inflightRef.current.delete(op.id)
+        op.execute().then(settled, (err) => {
+          settled()
           reportOperationFailure(op, err)
           op.rollback()
         })
@@ -152,9 +164,11 @@ export function useUndo(gracePeriodMs = 30_000) {
       clearTimeout(entry.timeoutId)
       entry.operation.rollback()
       pendingRef.current.delete(operationId)
+      // Undoing inside the grace window is still an undo: Redo brings it back.
+      pushToStack(redoStackRef.current, entry.operation)
       syncState()
     },
-    [syncState],
+    [pushToStack, syncState],
   )
 
   // -----------------------------------------------------------------------
@@ -194,7 +208,8 @@ export function useUndo(gracePeriodMs = 30_000) {
     const op = redoStackRef.current.pop()
     if (!op) return
 
-    op.execute().catch(() => {
+    op.execute().catch((err) => {
+      reportOperationFailure(op, err)
       op.rollback()
     })
     pushToStack(undoStackRef.current, op)
@@ -208,13 +223,38 @@ export function useUndo(gracePeriodMs = 30_000) {
   const flushPending = useCallback(() => {
     for (const [id, entry] of pendingRef.current) {
       clearTimeout(entry.timeoutId)
-      entry.operation.execute().catch(() => {
+      entry.operation.execute().catch((err) => {
+        reportOperationFailure(entry.operation, err)
         entry.operation.rollback()
       })
       pushToStack(undoStackRef.current, entry.operation)
       pendingRef.current.delete(id)
     }
     syncState()
+  }, [pushToStack, syncState])
+
+  // -----------------------------------------------------------------------
+  // Leaving the page commits what's pending
+  // -----------------------------------------------------------------------
+
+  // A delete inside its grace window has only happened on screen. Closing, reloading or leaving the
+  // tab would drop it, so pagehide (fired on unload and when the page enters the back/forward
+  // cache) commits every pending operation. The normal execute path would be aborted mid-flight,
+  // so each operation sends its final write through commitOnUnload instead.
+  useEffect(() => {
+    function commitOnPageHide() {
+      for (const [id, entry] of pendingRef.current) {
+        clearTimeout(entry.timeoutId)
+        entry.operation.commitOnUnload?.()
+        pushToStack(undoStackRef.current, entry.operation)
+        pendingRef.current.delete(id)
+      }
+      for (const op of inflightRef.current.values()) op.commitOnUnload?.()
+      inflightRef.current.clear()
+      syncState()
+    }
+    window.addEventListener('pagehide', commitOnPageHide)
+    return () => window.removeEventListener('pagehide', commitOnPageHide)
   }, [pushToStack, syncState])
 
   // -----------------------------------------------------------------------

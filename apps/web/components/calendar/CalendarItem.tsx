@@ -2,11 +2,12 @@
 
 import * as React from 'react'
 import { useDraggable } from '@dnd-kit/core'
-import { CheckSquare, Repeat2 } from 'lucide-react'
-import { format } from 'date-fns'
+import { MapPin, Repeat, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isAgentTask } from '@/lib/tasks/agent'
+import { AgentLabel, PawIcon, PriorityCat, PRIORITY_COATS } from '@/components/brand/cats'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
-import { getReadableTextColor } from './event-color'
+import { formatRange } from './time-format'
 
 interface CalendarItemProps {
   item: CalendarItemData
@@ -17,6 +18,10 @@ interface CalendarItemProps {
   resizeResolution?: number
   /** When on, past and completed items render dimmed (#21, #86). */
   dimPastEvents?: boolean
+  /** Shares its time with another item, so it sits in a narrow lane. */
+  narrow?: boolean
+  /** Today's column passes the current time so the item under it can show "Now". */
+  nowMs?: number
   onItemClick?: (item: CalendarItemData, anchorRect?: DOMRect) => void
   onItemDoubleClick?: (item: CalendarItemData) => void
   onResizeStart?: (item: CalendarItemData) => void
@@ -25,32 +30,34 @@ interface CalendarItemProps {
   onTaskCheckboxClick?: (item: CalendarItemData) => void
 }
 
-function darkenColor(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.max(0, (num >> 16) - amount)
-  const g = Math.max(0, ((num >> 8) & 0x00ff) - amount)
-  const b = Math.max(0, (num & 0x0000ff) - amount)
-  return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`
+const FREQ_LABELS: Record<string, string> = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', YEARLY: 'Yearly' }
+
+function repeatLabel(rule: string | null | undefined): string | null {
+  if (!rule) return null
+  const freq = /FREQ=([A-Z]+)/.exec(rule)?.[1]
+  return (freq && FREQ_LABELS[freq]) || 'Repeats'
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = num >> 16
-  const g = (num >> 8) & 0x00ff
-  const b = num & 0x0000ff
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
+// Event text sizes as the design draws them: one line under 30px, no detail row under 62px.
+// Two title lines plus the time need about 56px; below that the title keeps to one line, or a
+// 45-minute item (43px at 60px an hour) pushes its time row out of the box.
+const TINY_PX = 30
+const TWO_LINE_PX = 56
+const SHORT_PX = 62
 
-function formatTimeRange(start: Date, end: Date): string {
-  return `${format(start, 'h:mm')} - ${format(end, 'h:mm a')}`
-}
-
+/**
+ * One item on the week grid. Events are a light tint of their calendar colour with a bar on the
+ * left; tasks are white cards with a check box and a priority cat on the frame; routines are
+ * striped with a dot.
+ */
 export const CalendarItem = React.memo(function CalendarItem({
   item,
   style: positionStyle,
   hourHeight = 60,
   resizeResolution = 15,
   dimPastEvents = false,
+  narrow = false,
+  nowMs,
   onItemClick,
   onItemDoubleClick,
   onResizeStart,
@@ -68,8 +75,12 @@ export const CalendarItem = React.memo(function CalendarItem({
   const isCompleted = isTaskCompleted || isRoutineCompleted
   const isPast = item.endTime.getTime() < Date.now()
   const shouldDim = dimPastEvents && (isPast || isCompleted)
+  const isLive = nowMs != null && item.startTime.getTime() <= nowMs && item.endTime.getTime() > nowMs
+  const isAgent = item.type === 'task' && isAgentTask(item.task)
   const heightNum = parseFloat(String(positionStyle.height) || '0')
-  const isCompact = heightNum < 40
+  const tiny = heightNum < TINY_PX
+  const oneLine = !tiny && heightNum < TWO_LINE_PX
+  const short = heightNum < SHORT_PX
 
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation()
@@ -115,275 +126,108 @@ export const CalendarItem = React.memo(function CalendarItem({
     onTaskCheckboxClick?.(item)
   }
 
-  const mergedStyle: React.CSSProperties = {
-    ...positionStyle,
-    opacity: isDragging ? 0.4 : shouldDim ? 0.75 : 1,
-    zIndex: isDragging ? 100 : undefined,
-  }
-
-  if (item.type === 'event') {
-    const barColor = darkenColor(item.color, 40)
-    const textColor = getReadableTextColor(item.color)
-
-    return (
-      <div
-        ref={setNodeRef}
-        {...attributes}
-        {...listeners}
-        data-calendar-item
-        data-item-id={item.id}
-        data-item-type={item.type}
-        style={mergedStyle}
-        className={cn(
-          'absolute rounded-md overflow-hidden cursor-pointer',
-          'transition-[filter] duration-150',
-          'hover:brightness-110',
-          'group'
-        )}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-      >
-        <div
-          className="absolute inset-0 rounded-md"
-          style={{ backgroundColor: item.color }}
-        />
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-md"
-          style={{ backgroundColor: barColor }}
-        />
-        <div className="relative pl-2.5 pr-2 py-1 min-h-0 overflow-hidden">
-          {isCompact ? (
-            <p className="text-xs font-medium truncate leading-tight" style={{ color: textColor }}>
-              {item.title}
-            </p>
-          ) : (
-            <>
-              <p className="text-xs font-medium truncate leading-tight" style={{ color: textColor }}>
-                {item.title}
-              </p>
-              <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: textColor }}>
-                {formatTimeRange(item.startTime, item.endTime)}
-              </p>
-            </>
-          )}
-        </div>
-        <div
-          className={cn(
-            'absolute bottom-0 left-0 right-0 h-2',
-            'cursor-ns-resize opacity-0 group-hover:opacity-100',
-            'transition-opacity duration-150'
-          )}
-          style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
-          onMouseDown={handleResizeMouseDown}
-        />
-      </div>
-    )
-  }
-
-  if (item.type === 'task') {
-    return (
-      <div
-        ref={setNodeRef}
-        {...attributes}
-        {...listeners}
-        data-calendar-item
-        data-item-id={item.id}
-        data-item-type={item.type}
-        style={mergedStyle}
-        className={cn(
-          'absolute rounded-md overflow-hidden cursor-pointer',
-          'transition-[filter] duration-150',
-          'hover:brightness-110',
-          'group'
-        )}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-      >
-        <div
-          className="absolute inset-0 rounded-md border-2 border-dashed"
-          style={{
-            borderColor: item.color,
-            backgroundColor: hexToRgba(item.color, 0.05),
-          }}
-        />
-        <div className="relative flex items-start gap-1.5 pl-2 pr-2 py-1 min-h-0 overflow-hidden">
-          <button
-            type="button"
-            onClick={handleTaskCheckbox}
-            className={cn(
-              'shrink-0 w-3 h-3 rounded-sm border flex items-center justify-center mt-px',
-              'transition-colors duration-150'
-            )}
-            style={{
-              borderColor: item.color,
-              backgroundColor: isTaskCompleted ? item.color : 'transparent',
-            }}
-            aria-label={isTaskCompleted ? 'Reopen task' : 'Complete task'}
-          >
-            {isTaskCompleted && <CheckSquare size={8} style={{ color: '#fff' }} />}
-          </button>
-          <div className="min-w-0 flex-1">
-            {isCompact ? (
-              <div className="flex items-center gap-1.5">
-                <p
-                  className={cn(
-                    'text-xs font-medium truncate leading-tight',
-                    isCompleted && 'line-through'
-                  )}
-                  style={{ color: item.color }}
-                >
-                  {item.title}
-                </p>
-                {item.subtaskProgress && (
-                  <span
-                    className="text-[10px] shrink-0"
-                    style={{ color: item.color }}
-                  >
-                    {item.subtaskProgress.completed}/{item.subtaskProgress.total}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <p
-                    className={cn(
-                      'text-xs font-medium truncate leading-tight',
-                      isCompleted && 'line-through'
-                    )}
-                    style={{ color: item.color }}
-                  >
-                    {item.title}
-                  </p>
-                  {item.subtaskProgress && (
-                    <span
-                      className="text-[10px] shrink-0"
-                      style={{ color: item.color }}
-                    >
-                      {item.subtaskProgress.completed}/{item.subtaskProgress.total}
-                    </span>
-                  )}
-                </div>
-                <p
-                  className="text-[10px] truncate leading-tight mt-0.5"
-                  style={{ color: hexToRgba(item.color, 0.6) }}
-                >
-                  {formatTimeRange(item.startTime, item.endTime)}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-        <div
-          className={cn(
-            'absolute bottom-0 left-0 right-0 h-2',
-            'cursor-ns-resize opacity-0 group-hover:opacity-100',
-            'transition-opacity duration-150'
-          )}
-          style={{ backgroundColor: hexToRgba(item.color, 0.15) }}
-          onMouseDown={handleResizeMouseDown}
-        />
-      </div>
-    )
-  }
-
-  // Routine — checkbox + repeat icon
   function handleRoutineCheckbox(e: React.MouseEvent) {
     e.stopPropagation()
     onRoutineCheckboxClick?.(item)
   }
 
+  const repeat = item.type === 'event' ? repeatLabel(item.event?.recurrence_rule) : item.type === 'routine' ? repeatLabel(item.routine?.recurrence_rule) : null
+  const location = item.location ?? null
+  const meta: React.ReactNode[] = []
+  if (isLive) meta.push(<span key="now" className="meow-livetag">Now</span>)
+  if (item.event?.conferencing_url) meta.push(<span key="video"><Video size={12} />Video call</span>)
+  if (location && heightNum > 60) meta.push(<span key="loc"><MapPin size={12} />{location}</span>)
+  if (repeat && heightNum > 40) meta.push(<span key="rep"><Repeat size={12} />{repeat}</span>)
+
+  const coat = item.type === 'task' && item.task ? PRIORITY_COATS[item.task.importance] : null
+
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      data-calendar-item
-      data-item-id={item.id}
-      data-item-type={item.type}
-      style={mergedStyle}
-      className={cn(
-        'absolute rounded-md overflow-hidden cursor-pointer',
-        'transition-[filter] duration-150',
-        'hover:brightness-110',
-        'group'
-      )}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-    >
+    <>
       <div
-        className="absolute inset-0 rounded-md border-2 border-dashed"
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        data-calendar-item
+        data-item-id={item.id}
+        data-item-type={item.type}
         style={{
-          borderColor: item.color,
-          backgroundColor: hexToRgba(item.color, 0.05),
-        }}
-      />
-      <div className="relative flex items-start gap-1.5 pl-2 pr-2 py-1 min-h-0 overflow-hidden">
-        {/* Checkbox for routine instance completion */}
-        <button
-          type="button"
-          onClick={handleRoutineCheckbox}
-          className={cn(
-            'shrink-0 w-3 h-3 rounded border flex items-center justify-center mt-px',
-            'transition-colors duration-150'
-          )}
-          style={{
-            borderColor: isRoutineCompleted ? item.color : hexToRgba(item.color, 0.5),
-            backgroundColor: isRoutineCompleted ? item.color : 'transparent',
-          }}
-          aria-label={isRoutineCompleted ? 'Uncheck routine' : 'Complete routine'}
-        >
-          {isRoutineCompleted && (
-            <CheckSquare size={8} style={{ color: '#fff' }} />
-          )}
-        </button>
-        {/* Repeat icon */}
-        <Repeat2
-          size={10}
-          className="shrink-0 mt-0.5"
-          style={{ color: hexToRgba(item.color, 0.6) }}
-        />
-        <div className="min-w-0 flex-1">
-          {isCompact ? (
-            <p
-              className={cn(
-                'text-xs font-medium truncate leading-tight',
-                isRoutineCompleted && 'line-through'
-              )}
-              style={{ color: item.color }}
+          ...positionStyle,
+          '--c': item.color,
+          opacity: isDragging ? 0.4 : undefined,
+          zIndex: isDragging ? 100 : undefined,
+        } as React.CSSProperties}
+        className={cn(
+          'meow-ev group',
+          `is-${item.type}`,
+          tiny && 'is-tiny',
+          oneLine && 'is-oneline',
+          short && 'is-short',
+          narrow && 'is-nar',
+          shouldDim && 'is-past',
+          isLive && 'is-live',
+          isAgent && 'is-agent'
+        )}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+      >
+        <div className="meow-ev-t" data-fit-part>
+          {item.type === 'task' && (
+            <button
+              type="button"
+              onClick={handleTaskCheckbox}
+              className={cn('meow-ev-box', isTaskCompleted && 'is-done')}
+              aria-label={isTaskCompleted ? 'Reopen task' : 'Complete task'}
             >
-              {item.title}
-            </p>
-          ) : (
-            <>
-              <p
-                className={cn(
-                  'text-xs font-medium truncate leading-tight',
-                  isRoutineCompleted && 'line-through'
-                )}
-                style={{ color: item.color }}
-              >
-                {item.title}
-              </p>
-              <p
-                className="text-[10px] truncate leading-tight mt-0.5"
-                style={{ color: hexToRgba(item.color, 0.6) }}
-              >
-                {formatTimeRange(item.startTime, item.endTime)}
-              </p>
-            </>
+              {isTaskCompleted && <PawIcon />}
+            </button>
+          )}
+          {item.type === 'routine' && (
+            <button
+              type="button"
+              onClick={handleRoutineCheckbox}
+              className={cn('meow-ev-dot', isRoutineCompleted && 'is-done')}
+              aria-label={isRoutineCompleted ? 'Uncheck routine' : 'Complete routine'}
+            />
+          )}
+          <span data-fit-title className={cn(isCompleted && 'line-through')}>
+            {item.title}
+          </span>
+          {item.subtaskProgress && (
+            <span className="meow-ev-sub">
+              {item.subtaskProgress.completed}/{item.subtaskProgress.total}
+            </span>
           )}
         </div>
-      </div>
-      <div
-        className={cn(
-          'absolute bottom-0 left-0 right-0 h-2',
-          'cursor-ns-resize opacity-0 group-hover:opacity-100',
-          'transition-opacity duration-150'
+        {!tiny && (
+          <div className="meow-ev-tm" data-fit-part>
+            {formatRange(item.startTime, item.endTime)}
+          </div>
         )}
-        style={{ backgroundColor: hexToRgba(item.color, 0.15) }}
-        onMouseDown={handleResizeMouseDown}
-      />
-    </div>
+        {!short && meta.length > 0 && (
+          <div className="meow-ev-mi" data-fit-part>
+            {meta}
+          </div>
+        )}
+        {isAgent && !tiny && (
+          <div className="meow-ev-ag" data-fit-part>
+            <AgentLabel />
+          </div>
+        )}
+        <div className="meow-ev-resize" onMouseDown={handleResizeMouseDown} />
+      </div>
+
+      {coat && item.task && (
+        <div
+          className="meow-peek"
+          aria-hidden="true"
+          style={{
+            top: `calc(${typeof positionStyle.top === 'number' ? `${positionStyle.top}px` : positionStyle.top ?? '0px'} - 13.8px)`,
+            left: `calc(${positionStyle.left ?? '0px'} + ${positionStyle.width ?? '100%'} - 35px)`,
+          }}
+        >
+          <PriorityCat importance={item.task.importance} />
+        </div>
+      )}
+    </>
   )
 })

@@ -4,12 +4,15 @@ import { useMemo, useCallback } from 'react'
 import { parseISO, format, addDays } from 'date-fns'
 import { useCalendarStore } from '@/lib/stores/calendar-store'
 import { useUIStore } from '@/lib/stores/ui-store'
+import { useMounted } from '@/lib/hooks/use-mounted'
 import { CalendarHeader } from '@/components/calendar'
 import { CalendarWorkspace } from '@/components/calendar/CalendarWorkspace'
 import { EditFormHost } from '@/components/calendar/EditFormHost'
 import { getVisibleDays } from '@/components/calendar/grid-helpers'
 import { KanbanBoard } from '@/components/kanban'
-import { useEvents } from '@/lib/hooks/use-events'
+import { UndoStrip } from '@/components/UndoStrip'
+import { UpNextStrip } from '@/components/sidebar/UpNext'
+import { useEvents, useRsvpEvent } from '@/lib/hooks/use-events'
 import { useTasks } from '@/lib/hooks/use-tasks'
 import { useUndoable } from '@/lib/hooks/use-undoable'
 import { useRoutines } from '@/lib/hooks/use-routines'
@@ -70,6 +73,8 @@ export default function AppPage() {
 
   const userId = profile?.id ?? null
   const selfEmails = useMemo(() => accounts.map((a) => a.email), [accounts])
+  const accountEmails = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a.email])), [accounts])
+  const rsvp = useRsvpEvent()
 
   const undoable = useUndoable()
 
@@ -151,34 +156,46 @@ export default function AppPage() {
   )
 
   const showKanban = taskPanelViewMode === 'board'
+  // The week, today's column and "This week" come from the viewer's date, which only the browser
+  // knows: the server's date can differ by a day. So the dated views draw once mounted.
+  const mounted = useMounted()
+  if (!mounted) return <div className="flex h-full flex-col" aria-busy="true" />
 
   return (
     <div className="flex h-full flex-col">
-      <CalendarHeader
-        currentDate={currentDate}
-        view={view}
-        customDays={customDays}
-        onToday={goToToday}
-        onPrev={goToPrevPeriod}
-        onNext={goToNextPeriod}
-        onViewChange={(v) => setView(v)}
-        showWeekends={showWeekends}
-        widenCurrentDay={widenCurrentDay}
-        dimPastEvents={dimPastEvents}
-        showDeclinedEvents={showDeclinedEvents}
-        showCompletedTasks={showCompletedTasks}
-        mergeDuplicateEvents={mergeDuplicateEvents}
-        onShowWeekendsChange={setShowWeekends}
-        onWidenCurrentDayChange={setWidenCurrentDay}
-        onDimPastEventsChange={setDimPastEvents}
-        onShowDeclinedEventsChange={setShowDeclinedEvents}
-        onShowCompletedTasksChange={setShowCompletedTasks}
-        onMergeDuplicateEventsChange={setMergeDuplicateEvents}
-      />
+      {/* The board brings its own header; the week gets the calendar header, then undo, then Up next on phones. */}
+      {!showKanban && (
+        <>
+          <CalendarHeader
+            currentDate={currentDate}
+            view={view}
+            customDays={customDays}
+            onToday={goToToday}
+            onPrev={goToPrevPeriod}
+            onNext={goToNextPeriod}
+            onViewChange={(v) => setView(v)}
+            showWeekends={showWeekends}
+            widenCurrentDay={widenCurrentDay}
+            dimPastEvents={dimPastEvents}
+            showDeclinedEvents={showDeclinedEvents}
+            showCompletedTasks={showCompletedTasks}
+            mergeDuplicateEvents={mergeDuplicateEvents}
+            onShowWeekendsChange={setShowWeekends}
+            onWidenCurrentDayChange={setWidenCurrentDay}
+            onDimPastEventsChange={setDimPastEvents}
+            onShowDeclinedEventsChange={setShowDeclinedEvents}
+            onShowCompletedTasksChange={setShowCompletedTasks}
+            onMergeDuplicateEventsChange={setMergeDuplicateEvents}
+          />
+          <UndoStrip />
+          <UpNextStrip />
+        </>
+      )}
 
       {showKanban ? (
         <div className="flex-1 overflow-hidden">
           <KanbanBoard
+            belowHeader={<UndoStrip />}
             tasks={tasks}
             tags={tags}
             onTaskMove={handleTaskMove}
@@ -198,6 +215,8 @@ export default function AppPage() {
             selfEmails={selfEmails}
             userId={userId}
             currentDate={currentDate}
+            accountEmails={accountEmails}
+            onRsvp={(id, response) => rsvp.mutateAsync({ id, response })}
           />
         </div>
       )}
@@ -210,6 +229,7 @@ export default function AppPage() {
         calendars={calendars}
         tags={tags}
         userId={userId}
+        accountEmails={accountEmails}
       />
     </div>
   )

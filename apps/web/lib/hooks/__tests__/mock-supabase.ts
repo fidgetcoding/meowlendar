@@ -86,11 +86,13 @@ function createQueryBuilder(): MockQueryBuilder {
 }
 
 // The Supabase auth mock
+const session = () => ({ data: { session: { access_token: 'test-token', user: { id: 'test-user-id' } } }, error: null })
 const mockAuth = {
   getUser: vi.fn().mockResolvedValue({
     data: { user: { id: 'test-user-id' } },
     error: null,
   }),
+  getSession: vi.fn().mockResolvedValue(session()),
 }
 
 /**
@@ -118,6 +120,8 @@ export function resetSupabaseMocks() {
     data: { user: { id: 'test-user-id' } },
     error: null,
   })
+  mockAuth.getSession.mockClear()
+  mockAuth.getSession.mockResolvedValue(session())
 }
 
 // ---------------------------------------------------------------------------

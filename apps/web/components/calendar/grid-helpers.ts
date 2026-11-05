@@ -9,8 +9,9 @@ import {
   addDays,
   getDay,
 } from 'date-fns'
-import type { CalendarEvent } from '@poolendar/types'
+import type { Calendar, CalendarEvent } from '@poolendar/types'
 import type { CalendarItemData } from './calendar-types'
+import { copyRank, mergeCopies } from '@/lib/event-merge'
 
 export type GridView = 'day' | 'week' | 'month' | '2weeks' | 'custom'
 
@@ -77,36 +78,48 @@ export function clampItemToDay(
 }
 
 /**
- * Collapse events with the same title and exact start/end that come from
- * different calendars into a single rendered block (#5 mergeDuplicateEvents).
- * Non-event items pass through untouched.
+ * Show each meeting once when it reaches you through several calendars or accounts
+ * (#5 mergeDuplicateEvents), by the rules in lib/event-merge. The copy shown is the one
+ * you answered best, then one on a calendar you can edit; the others stay on it as
+ * `duplicates`. Non-event items pass through untouched.
  */
 export function mergeDuplicateEventItems(
-  items: CalendarItemData[]
+  items: CalendarItemData[],
+  calendars: Calendar[] = []
 ): CalendarItemData[] {
-  const seen = new Set<string>()
-  const out: CalendarItemData[] = []
-  for (const item of items) {
-    if (item.type !== 'event') {
-      out.push(item)
-      continue
-    }
-    const key = `${item.title}|${item.startTime.getTime()}|${item.endTime.getTime()}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(item)
-  }
-  return out
+  const byId = new Map(calendars.map((c) => [c.id, c]))
+  const { shown, hidden } = mergeCopies(
+    items,
+    (item) =>
+      item.type === 'event' && item.event
+        ? {
+            calendarId: item.event.calendar_id,
+            icalUid: item.event.ical_uid,
+            title: item.title,
+            start: item.startTime.getTime(),
+            end: item.endTime.getTime(),
+          }
+        : null,
+    (item) => (item.event ? copyRank(item.event, byId.get(item.event.calendar_id)) : 0),
+  )
+  if (hidden.size === 0) return shown
+  return shown.map((item) => {
+    const extra = hidden.get(item)
+    return extra ? { ...item, duplicates: [...(item.duplicates ?? []), ...extra] } : item
+  })
 }
 
 /**
- * True when the current user (identified by their connected-account emails)
- * has declined the event. With no self-email context, nothing is declined.
+ * True when the current user has declined the event. A copy synced from Google marks
+ * which guest is its own account, and that answer decides. Otherwise any of the
+ * user's connected-account emails declining counts; with none, nothing is declined.
  */
 export function isDeclinedEvent(
   event: CalendarEvent,
   selfEmails: string[]
 ): boolean {
+  const own = (event.attendees ?? []).find((a) => a.self)
+  if (own) return own.response_status === 'declined'
   if (selfEmails.length === 0) return false
   const lower = selfEmails.map((e) => e.toLowerCase())
   return (event.attendees ?? []).some(

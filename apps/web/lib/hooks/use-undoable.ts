@@ -1,16 +1,21 @@
 'use client'
 
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import type { CalendarEvent, Task, Routine } from '@poolendar/types'
+import type { Calendar, CalendarEvent, Task, Routine, RoutineInstanceStatus } from '@poolendar/types'
+import { ruleEndingBefore } from '@/lib/recurrence'
 import { useUndoContext } from '@/lib/undo/undo-context'
 import {
   useCreateEvent,
   useUpdateEvent,
   useDeleteEvent,
   eventKeys,
+  defaultCalendarId,
   type CreateEventInput,
   type UpdateEventInput,
 } from './use-events'
+import { calendarKeys, defaultCalendarOf } from './use-calendars'
+import { createClient } from '@/lib/supabase/client'
+import { sessionUserId } from '@/lib/auth/session-ready'
 import {
   useCreateTask,
   useUpdateTask,
@@ -33,6 +38,14 @@ import {
   routineKeys,
 } from './use-routines'
 import type { CreateRoutineInput, UpdateRoutineInput } from './use-routines'
+import { unloadCommits } from '@/lib/undo/unload-commit'
+
+/** Which occurrences a routine delete covers: the same choices as a recurring event. */
+export type RoutineDeleteScope =
+  | { type: 'single' }
+  | { type: 'future' }
+  | { type: 'all' }
+  | { type: 'custom'; dates: string[] }
 
 // ---------------------------------------------------------------------------
 // use-undoable — the single entry point the UI uses for mutations so every
@@ -104,15 +117,29 @@ export function useUndoable() {
   // Events
   // -----------------------------------------------------------------------
 
-  function createEvent(input: CreateEventInput) {
+  function createEvent(event: CreateEventInput) {
+    // The id is chosen here so the write and its resend on unload are the same row, and the
+    // calendar from what the page already loaded, so the resend is a complete row from the start.
+    const input = {
+      ...event,
+      id: event.id ?? crypto.randomUUID(),
+      calendar_id: event.calendar_id ?? defaultCalendarOf(qc.getQueryData<Calendar[]>(calendarKeys.list())),
+    }
     let createdId: string | null = null
     pushOperation({
       type: 'create',
       entityType: 'event',
-      entityId: 'new',
+      entityId: input.id,
       previousState: null,
       newState: input as Record<string, unknown>,
+      commitOnUnload: unloadCommits.createEvent(input),
       execute: async () => {
+        // The calendar list hadn't loaded yet: ask for the default before anything else, so a
+        // reload from here on still resends a complete row.
+        if (!input.calendar_id) {
+          const supabase = createClient()
+          input.calendar_id = await defaultCalendarId(supabase, input.user_id ?? (await sessionUserId(supabase)))
+        }
         const created = await createEventM.mutateAsync(input)
         createdId = created.id
       },
@@ -151,6 +178,7 @@ export function useUndoable() {
       previousState: event as unknown as Record<string, unknown>,
       newState: null,
       execute: () => deleteEventM.mutateAsync(event.id),
+      commitOnUnload: unloadCommits.deleteEvent(event.id),
       rollback: () => restore(qc, snapshot),
     })
   }
@@ -159,14 +187,16 @@ export function useUndoable() {
   // Tasks
   // -----------------------------------------------------------------------
 
-  function createTask(input: CreateTaskInput) {
+  function createTask(task: CreateTaskInput) {
+    const input = { ...task, id: task.id ?? crypto.randomUUID() }
     let createdId: string | null = null
     pushOperation({
       type: 'create',
       entityType: 'task',
-      entityId: 'new',
+      entityId: input.id,
       previousState: null,
       newState: input as Record<string, unknown>,
+      commitOnUnload: unloadCommits.createTask(input),
       execute: async () => {
         const created = await createTaskM.mutateAsync(input)
         createdId = created.id
@@ -228,6 +258,7 @@ export function useUndoable() {
       previousState: task as unknown as Record<string, unknown>,
       newState: null,
       execute: () => deleteTaskM.mutateAsync(task.id),
+      commitOnUnload: unloadCommits.deleteTask(task.id),
       rollback: () => restore(qc, snapshot),
     })
   }
@@ -247,6 +278,7 @@ export function useUndoable() {
       execute: async () => {
         await completeTaskM.mutateAsync(task.id)
       },
+      commitOnUnload: unloadCommits.completeTask(task.id),
       rollback: () => restore(qc, snapshot),
     })
   }
@@ -284,6 +316,7 @@ export function useUndoable() {
       execute: async () => {
         await moveTaskM.mutateAsync(input)
       },
+      commitOnUnload: unloadCommits.moveTask(input, previous),
       rollback: () => restore(qc, snapshot),
     })
   }
@@ -332,14 +365,16 @@ export function useUndoable() {
   // Routines
   // -----------------------------------------------------------------------
 
-  function createRoutine(input: CreateRoutineInput & { user_id?: string | null }) {
+  function createRoutine(routine: CreateRoutineInput & { user_id?: string | null }) {
+    const input = { ...routine, id: routine.id ?? crypto.randomUUID() }
     let createdId: string | null = null
     pushOperation({
       type: 'create',
       entityType: 'routine',
-      entityId: 'new',
+      entityId: input.id,
       previousState: null,
       newState: input as Record<string, unknown>,
+      commitOnUnload: unloadCommits.createRoutine(input),
       execute: async () => {
         const created = await createRoutineM.mutateAsync(input)
         createdId = created.id
@@ -379,6 +414,7 @@ export function useUndoable() {
       previousState: routine as unknown as Record<string, unknown>,
       newState: null,
       execute: () => deleteRoutineM.mutateAsync(routine.id),
+      commitOnUnload: unloadCommits.deleteRoutine(routine.id),
       rollback: () => restore(qc, snapshot),
     })
   }
@@ -394,6 +430,7 @@ export function useUndoable() {
       execute: async () => {
         await completeInstanceM.mutateAsync({ routine_id: routineId, date })
       },
+      commitOnUnload: unloadCommits.completeRoutineInstance(routineId, date),
       rollback: () => {
         restore(qc, snapshot)
         resetInstanceM.mutate({ routine_id: routineId, date })
@@ -405,8 +442,60 @@ export function useUndoable() {
     resetInstanceM.mutate({ routine_id: routineId, date })
   }
 
-  function skipRoutineInstance(routineId: string, date: string) {
-    skipInstanceM.mutate({ routine_id: routineId, date })
+  /** Skip dates of a routine; undo returns each to its state before (done, or pending). */
+  function skipRoutineDates(routineId: string, dates: string[], previousStatus?: RoutineInstanceStatus) {
+    const snapshot = snap(qc, routineKeys.allInstances())
+    const before = previousStatus === 'completed' ? 'completed' : 'pending'
+    pushOperation({
+      type: 'update',
+      entityType: 'routine',
+      entityId: routineId,
+      previousState: { dates, status: before },
+      newState: { dates, status: 'skipped' },
+      execute: async () => {
+        await Promise.all(dates.map((date) => skipInstanceM.mutateAsync({ routine_id: routineId, date })))
+      },
+      rollback: () => {
+        restore(qc, snapshot)
+        const back = before === 'completed' ? completeInstanceM : resetInstanceM
+        for (const date of dates) back.mutate({ routine_id: routineId, date })
+      },
+    })
+  }
+
+  function skipRoutineInstance(routineId: string, date: string, previousStatus?: RoutineInstanceStatus) {
+    skipRoutineDates(routineId, [date], previousStatus)
+  }
+
+  /**
+   * Delete part or all of a routine, with the same scopes as a recurring event:
+   * "only this" (and custom dates) skips those dates, "this and all future" ends the routine the
+   * day before, "all" deletes it. Every case can be undone.
+   */
+  function deleteRoutineOccurrences(
+    routine: Routine,
+    date: string | null,
+    scope: RoutineDeleteScope = { type: 'all' },
+    previousStatus?: RoutineInstanceStatus
+  ) {
+    if (scope.type === 'all') {
+      deleteRoutine(routine)
+      return
+    }
+    if (scope.type === 'future') {
+      if (!date) return
+      // A routine counts from the day it was made, so from that day on "the rest" is all of it.
+      if (date <= routine.created_at.slice(0, 10)) {
+        deleteRoutine(routine)
+        return
+      }
+      const before = new Date(`${date}T00:00:00.000Z`)
+      updateRoutine(routine.id, { recurrence_rule: ruleEndingBefore(routine.recurrence_rule, before) }, routine)
+      return
+    }
+    // Without a date there is no occurrence to remove; never fall through to deleting everything.
+    const dates = scope.type === 'custom' ? scope.dates : date ? [date] : []
+    if (dates.length > 0) skipRoutineDates(routine.id, dates, previousStatus)
   }
 
   return {
@@ -425,6 +514,7 @@ export function useUndoable() {
     createRoutine,
     updateRoutine,
     deleteRoutine,
+    deleteRoutineOccurrences,
     completeRoutineInstance,
     resetRoutineInstance,
     skipRoutineInstance,

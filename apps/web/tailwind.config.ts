@@ -1,5 +1,7 @@
 import type { Config } from 'tailwindcss'
 
+// Meowlendar V2 palette. The live values (and their dark-theme versions) are CSS variables in
+// app/globals.css; these names are for the occasional utility class.
 const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
@@ -8,17 +10,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // periwinkle #6f7ae0 and the tints the design derives from it
         brand: {
-          50: '#fef3e2',
-          100: '#fde4b9',
-          200: '#fcd48c',
-          300: '#fbc35f',
-          400: '#fab63d',
-          500: '#f9a825',
-          600: '#f59b20',
-          700: '#ef8a1a',
-          800: '#e97a15',
-          900: '#df5f0c',
+          50: '#f4f5ff',
+          100: '#eaecfe',
+          200: '#d5d9fb',
+          300: '#b6bcf1',
+          400: '#929be8',
+          500: '#6f7ae0',
+          600: '#515dcb',
+          700: '#4651bd',
+          800: '#4f5482',
+          900: '#2e3270',
+        },
+        paper: '#fffdf9',
+        ink: '#21180e',
+        loaf: '#e88a2c',
+        sun: '#ffc24a',
+        done: '#3dab63',
+        cal: {
+          my: '#e8930c',
+          work: '#5a68d4',
+          personal: '#cf5d78',
+          gym: '#2b93b4',
         },
       },
     },

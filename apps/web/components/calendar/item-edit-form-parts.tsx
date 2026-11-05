@@ -5,11 +5,11 @@ import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 
 export const IMPORTANCE_OPTIONS = [
-  { value: 'lowest', label: 'Lowest', color: '#6b7280' },
-  { value: 'low', label: 'Low', color: '#3b82f6' },
-  { value: 'normal', label: 'Normal', color: '#f9a825' },
-  { value: 'high', label: 'High', color: '#f97316' },
-  { value: 'highest', label: 'Highest', color: '#ef4444' },
+  { value: 'lowest', label: 'Lowest', color: '#6d6152' },
+  { value: 'low', label: 'Low', color: '#8b7d69' },
+  { value: 'normal', label: 'Normal', color: '#d6b48a' },
+  { value: 'high', label: 'High', color: '#e07a12' },
+  { value: 'highest', label: 'Highest', color: '#c8432f' },
 ] as const
 
 /**
@@ -25,6 +25,44 @@ export function safeFormatDate(
   const d = new Date(value)
   if (isNaN(d.getTime())) return fallback
   return format(d, fmt)
+}
+
+/**
+ * The instant for a date and time typed into the form, read in the user's own zone. An
+ * offset-less "2026-11-05T14:00:00" is read by Postgres as UTC, which moved a 2 PM event in
+ * New York to 9 AM on Save.
+ */
+export function localInstant(date: string, time: string): string {
+  const [year = 1970, month = 1, day = 1] = date.split('-').map(Number)
+  const [hour = 0, minute = 0] = time.split(':').map(Number)
+  return new Date(year, month - 1, day, hour, minute).toISOString()
+}
+
+/**
+ * All-day items store their calendar date at UTC midnight and are read back by that date part
+ * (see gridDate in grid-items), so the date never shifts with the viewer's zone.
+ */
+export function allDayInstant(date: string): string {
+  return `${date}T00:00:00.000Z`
+}
+
+/** The calendar date an all-day timestamp stands for: its date part, never shifted to local time. */
+export function allDayDate(value: string | undefined, fallback: string): string {
+  return value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : fallback
+}
+
+/** A YYYY-MM-DD date moved by whole days. */
+export function shiftDate(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * All-day ends are exclusive, as Google stores them: one day D runs to D+1 00:00. The form shows
+ * the last day itself, never before the first (a row saved with no length reads as one day).
+ */
+export function allDayLastDate(start: string, exclusiveEnd: string): string {
+  const last = shiftDate(exclusiveEnd, -1)
+  return last < start ? start : last
 }
 
 export function fieldClass(extra?: string) {

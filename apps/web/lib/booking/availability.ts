@@ -117,6 +117,15 @@ export function computeBlockedIntervals(opts: {
   return intervals
 }
 
+/**
+ * Whether a calendar event takes its time away from booking. A Free event (all-day or timed)
+ * leaves the time open, as Google's free/busy does; Busy ones, and any older row with no
+ * visibility, block it.
+ */
+export function blocksBookings(event: { visibility?: string | null }): boolean {
+  return event.visibility !== 'free'
+}
+
 /** True when [slotStartMs, slotEndMs) overlaps any blocked interval. */
 export function hasConflict(
   slotStartMs: number,

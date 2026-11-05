@@ -262,7 +262,23 @@ describe('PoolendarClient (api-client package)', () => {
       expect(body.scheduled_end).toBe('2026-06-15T10:00:00Z')
     })
 
+    it('listEvents merges copies by default and asks for every row with merge: false', async () => {
+      globalThis.fetch = mockFetch([])
+      await client.listEvents({ start: '2026-01-01', end: '2026-01-07' })
+      expect(lastCall()[0]).not.toContain('merge=')
+      await client.listEvents({ start: '2026-01-01', end: '2026-01-07', merge: false })
+      expect(lastCall()[0]).toContain('merge=false')
+    })
+
     // Search
+    it('search sends merge=false only when asked', async () => {
+      globalThis.fetch = mockFetch([])
+      await client.search('kickoff')
+      expect(lastCall()[0]).not.toContain('merge=')
+      await client.search('kickoff', undefined, undefined, { merge: false })
+      expect(lastCall()[0]).toContain('merge=false')
+    })
+
     it('search encodes query parameter', async () => {
       globalThis.fetch = mockFetch([])
       await client.search('team meeting')

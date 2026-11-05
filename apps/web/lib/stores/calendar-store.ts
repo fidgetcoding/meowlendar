@@ -36,6 +36,8 @@ interface CalendarState {
   // Selection
   selectedItemId: string | null
   selectedItemType: 'event' | 'task' | 'routine' | null
+  /** The day of a selected routine occurrence (YYYY-MM-DD), so the Delete key can offer scope. */
+  selectedOccurrenceDate: string | null
 
   // Visible calendars
   visibleCalendarIds: Set<string>
@@ -70,7 +72,7 @@ interface CalendarState {
   goToToday: () => void
   goToPrevPeriod: () => void
   goToNextPeriod: () => void
-  selectItem: (id: string | null, type: 'event' | 'task' | 'routine' | null) => void
+  selectItem: (id: string | null, type: 'event' | 'task' | 'routine' | null, occurrenceDate?: string | null) => void
   clearSelection: () => void
   toggleCalendarVisibility: (calendarId: string) => void
   setAllCalendarsVisible: (ids: string[]) => void
@@ -136,6 +138,7 @@ export const useCalendarStore = create<CalendarState>()(
       // Selection
       selectedItemId: null,
       selectedItemType: null,
+      selectedOccurrenceDate: null,
 
       // Visible calendars
       visibleCalendarIds: new Set<string>(),
@@ -183,11 +186,11 @@ export const useCalendarStore = create<CalendarState>()(
         set({ selectedDate: navigateDate(selectedDate, view, customDays, 'next') })
       },
 
-      selectItem: (id, type) =>
-        set({ selectedItemId: id, selectedItemType: type }),
+      selectItem: (id, type, occurrenceDate = null) =>
+        set({ selectedItemId: id, selectedItemType: type, selectedOccurrenceDate: occurrenceDate }),
 
       clearSelection: () =>
-        set({ selectedItemId: null, selectedItemType: null }),
+        set({ selectedItemId: null, selectedItemType: null, selectedOccurrenceDate: null }),
 
       toggleCalendarVisibility: (calendarId) =>
         set((state) => {

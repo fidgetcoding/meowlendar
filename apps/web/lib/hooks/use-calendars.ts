@@ -45,6 +45,12 @@ export function flattenCalendars(
   ]
 }
 
+/** The calendar a new event goes on when none was chosen: the primary one, else the first turned on. */
+export function defaultCalendarOf(calendars: readonly Calendar[] | undefined): string | null {
+  const active = (calendars ?? []).filter((c) => c.is_active !== false)
+  return (active.find((c) => c.is_primary) ?? active[0])?.id ?? null
+}
+
 // ---------------------------------------------------------------------------
 // useCalendars — flat list of every calendar: Google sub-calendars, then local
 // ---------------------------------------------------------------------------

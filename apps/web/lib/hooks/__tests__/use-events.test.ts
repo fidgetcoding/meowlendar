@@ -178,6 +178,23 @@ describe('useCreateEvent', () => {
     queryClient.clear()
   })
 
+  // A create that awaited getUser() first was still on that round trip when a reload aborted it.
+  it('takes the owner from the session the browser holds, never a getUser round trip', async () => {
+    const created = makeEvent({ id: 'new-evt' })
+    mockSupabaseResult(created)
+    const { queryClient, wrapper } = createTestQueryClient()
+    const { result } = renderHook(() => useCreateEvent(), { wrapper })
+
+    await act(async () => {
+      result.current.mutate(omit(created, ['id', 'created_at', 'updated_at', 'user_id']))
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mockSupabaseClient.auth.getUser).not.toHaveBeenCalled()
+    expect(mockSupabaseClient.auth.getSession).toHaveBeenCalled()
+    queryClient.clear()
+  })
+
   it('invalidates event list queries on settle', async () => {
     const created = makeEvent({ id: 'new-evt' })
     mockSupabaseResult(created)

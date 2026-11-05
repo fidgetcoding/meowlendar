@@ -178,6 +178,35 @@ export async function deleteGoogleEvent(
   }
 }
 
+/** The account isn't on the event's guest list, so it has no reply to send. */
+export class NotAGuestError extends Error {}
+
+/**
+ * Sends an invitation reply as the account this calendar belongs to. Google takes the
+ * guest list whole, so it reads the current one and changes only that account's answer.
+ */
+export async function respondToGoogleEvent(
+  accountId: string,
+  calendarId: string,
+  googleEventId: string,
+  accountEmail: string | null,
+  response: 'accepted' | 'declined' | 'tentative'
+): Promise<GoogleEvent> {
+  const accessToken = await getGoogleAccessToken(accountId)
+  const path = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`
+  const current = (await googleCalendarRequest(accessToken, path)) as GoogleEvent
+  const attendees = current.attendees ?? []
+  const email = accountEmail?.toLowerCase()
+  const mine = attendees.find((a) => a.self) ?? attendees.find((a) => a.email.toLowerCase() === email)
+  if (!mine) throw new NotAGuestError('This account is not a guest on the event')
+  return googleCalendarRequest(accessToken, path, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      attendees: attendees.map((a) => (a === mine ? { ...a, responseStatus: response } : a)),
+    }),
+  })
+}
+
 export async function listGoogleEvents(
   accountId: string,
   calendarId: string,

@@ -59,6 +59,21 @@ export interface RoutineInstanceItem {
 }
 
 /**
+ * Another copy of a meeting that reached you through a different calendar or Google
+ * account. `GET /api/events` shows each meeting once and lists the copies it left out
+ * here; reply as that account with `POST /api/events/{event_id}/rsvp`.
+ */
+export interface EventCopyRef {
+  event_id: string
+  calendar_id: string
+  /** The Google account the copy came through; null on a local calendar. */
+  account_email: string | null
+  google_event_id: string | null
+  /** Your answer on that copy; null when that account isn't a guest. */
+  response_status: import('./event').EventAttendee['response_status'] | null
+}
+
+/**
  * A single item on the unified calendar (spec #22). `GET /api/events` unions
  * events, scheduled tasks, and routine instances in the window; the `kind`
  * discriminator tells them apart. Scheduled tasks carry their own
@@ -66,7 +81,12 @@ export interface RoutineInstanceItem {
  * naturally excluded — only its children render (#23e).
  */
 export type CalendarItem =
-  | (import('./event').CalendarEvent & { kind: 'event'; occurrence_start?: string })
+  | (import('./event').CalendarEvent & {
+      kind: 'event'
+      occurrence_start?: string
+      /** Copies of this meeting merged into it. Absent with `merge=false` or when there are none. */
+      also_on?: EventCopyRef[]
+    })
   | (import('./task').Task & { kind: 'task' })
   | (RoutineInstanceItem & { kind: 'routine_instance' })
 

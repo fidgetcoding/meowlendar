@@ -18,6 +18,9 @@ import {
 import { cn } from '@/lib/utils'
 import type { CalendarEvent, Task, Routine } from '@poolendar/types'
 import { RecurrenceEditDialog, type RecurrenceEditScope } from './RecurrenceEditDialog'
+import { AlsoOnLine, RsvpRow } from './EventCopies'
+import type { RsvpCopy } from './event-copies'
+import type { RsvpAnswer } from '@/lib/hooks/use-events'
 
 type PreviewItem = {
   type: 'event' | 'task' | 'routine'
@@ -36,6 +39,11 @@ interface PreviewPopoverProps {
   onDelete: (scope?: RecurrenceEditScope) => void
   onComplete?: () => void
   onSkip?: () => void
+  /** The other calendars a merged meeting is on. */
+  alsoOn?: string[]
+  /** The copies you can answer from, the shown one first. */
+  rsvpCopies?: RsvpCopy[]
+  onRsvp?: (eventId: string, answer: RsvpAnswer) => Promise<unknown>
 }
 
 const POPOVER_WIDTH = 300
@@ -65,11 +73,11 @@ function computePosition(anchor: DOMRect): { top: number; left: number } {
 }
 
 const IMPORTANCE_COLORS: Record<string, string> = {
-  highest: '#ef4444',
-  high: '#f97316',
-  normal: '#f9a825',
-  low: '#3b82f6',
-  lowest: '#6b7280',
+  highest: '#c8432f',
+  high: '#e07a12',
+  normal: '#d6b48a',
+  low: '#8b7d69',
+  lowest: '#6d6152',
 }
 
 function ImportanceBadge({ importance }: { importance: string }) {
@@ -115,6 +123,9 @@ export function PreviewPopover({
   onDelete,
   onComplete,
   onSkip,
+  alsoOn = [],
+  rsvpCopies = [],
+  onRsvp,
 }: PreviewPopoverProps) {
   const popoverRef = React.useRef<HTMLDivElement>(null)
   const [isMounted, setIsMounted] = React.useState(false)
@@ -200,7 +211,7 @@ export function PreviewPopover({
   if (!isMounted || !anchorRect) return null
 
   const position = computePosition(anchorRect)
-  const color = item.calendarColor ?? '#f9a825'
+  const color = item.calendarColor ?? '#e8930c'
 
   let title = ''
   let timeRange = ''
@@ -312,11 +323,13 @@ export function PreviewPopover({
         {/* Event-specific */}
         {item.type === 'event' && item.event && (
           <>
+            <AlsoOnLine labels={alsoOn} className="mt-1 pl-[18px]" />
             {item.event.attendees.length > 0 && (
               <div className="mt-2 text-xs text-[var(--muted)]">
                 {item.event.attendees.length} attendee{item.event.attendees.length !== 1 ? 's' : ''}
               </div>
             )}
+            {onRsvp && rsvpCopies.length > 0 && <RsvpRow copies={rsvpCopies} onRespond={onRsvp} />}
           </>
         )}
 

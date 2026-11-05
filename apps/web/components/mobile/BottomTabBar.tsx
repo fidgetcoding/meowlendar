@@ -30,8 +30,8 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
       aria-label="Mobile navigation"
       className={cn(
         'fixed bottom-0 left-0 right-0 z-50',
-        'flex items-center justify-around',
-        'border-t border-[var(--border)] bg-[var(--surface)]',
+        'flex items-center justify-around gap-1 px-1.5 pt-1',
+        'border-t border-[color-mix(in_srgb,var(--peri)_26%,transparent)] bg-[var(--peril)]',
         'md:hidden'
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -48,16 +48,16 @@ export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
             aria-label={tab.label}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex flex-col items-center justify-center gap-0.5',
-              'flex-1 py-2 pt-2.5',
+              'flex flex-col items-center justify-center gap-1',
+              'flex-1 my-1 py-1.5 rounded-xl',
               'transition-colors duration-150',
               active
-                ? 'text-[var(--accent)]'
-                : 'text-[var(--muted)] active:text-[var(--fg)]'
+                ? 'bg-[var(--railon)] text-[var(--ink)] shadow-[0_1px_2px_rgba(81,93,203,.14),0_8px_16px_-10px_rgba(81,93,203,.55)] [&>svg]:text-[var(--perid)]'
+                : 'text-[var(--perik)] active:text-[var(--ink)]'
             )}
           >
-            <Icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium leading-none">
+            <Icon className="h-5 w-5" strokeWidth={1.6} />
+            <span className="text-[10.5px] font-semibold leading-none">
               {tab.label}
             </span>
           </button>

@@ -28,8 +28,9 @@ self.addEventListener('notificationclick', (event) => {
 
 // Basic offline caching (app shell). Bumping CACHE_NAME purges every older
 // cache on activate — required whenever bundled CSS/JS changes shape (e.g.
-// the Meowlendar rebrand: stale poolendar-v2 kept serving the dark-only CSS).
-const CACHE_NAME = 'meowlendar-v3'
+// the Meowlendar rebrand: stale poolendar-v2 kept serving the dark-only CSS;
+// v4 is the V2 redesign, whose new icons would otherwise stay cache-first stale).
+const CACHE_NAME = 'meowlendar-v4'
 const PRECACHE = ['/', '/manifest.json']
 
 self.addEventListener('install', (event) => {

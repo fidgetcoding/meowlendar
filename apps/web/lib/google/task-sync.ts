@@ -113,6 +113,12 @@ export function googleEventIdForTask(taskId: string): string {
   return `mt${taskId.replace(/-/g, '').toLowerCase()}`
 }
 
+/** The task a Google event id was made for, or null for any other id. */
+export function taskIdFromGoogleEventId(eventId: string): string | null {
+  const m = /^mt([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/.exec(eventId)
+  return m ? m.slice(1).join('-') : null
+}
+
 async function pushTask(supabase: Service, task: TaskRow, target: GoogleTarget) {
   const accountId = target.google_account_id as string
   const googleCalendarId = target.google_calendar_id as string
@@ -276,7 +282,10 @@ export async function applyIncomingTaskEvent(
   userId: string,
   calendarId: string,
 ): Promise<'updated' | 'deleted' | false> {
-  const taskId = googleEvent.extendedProperties?.private?.[TASK_ID_PROPERTY]
+  // The private property marks a mirror. Google may hold it back from another
+  // account sharing the calendar, so the id we gave the event is checked as well.
+  const marked = googleEvent.extendedProperties?.private?.[TASK_ID_PROPERTY]
+  const taskId = marked ?? taskIdFromGoogleEventId(googleEvent.id)
   if (!taskId) return false
 
   const { data: task, error: readError } = await supabase
@@ -287,6 +296,8 @@ export async function applyIncomingTaskEvent(
     .maybeSingle()
   if (readError) throw new Error(`Failed to read mirrored task: ${readError.message}`)
   const row = task as unknown as TaskRow | null
+  // Only an id that looks like ours, with no task behind it, is an ordinary event.
+  if (!row && !marked) return false
   // No such task for this user. Either way it must not become an event.
   if (!row || row.google_event_id !== googleEvent.id || row.google_calendar_id !== calendarId) return 'updated'
 

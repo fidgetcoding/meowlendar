@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isoInstant } from './instant'
 import { partialUpdate } from './partial'
 
 /** Links a task to a line in an Obsidian vault: `<vault name>:<line id>`. */
@@ -13,15 +14,15 @@ export const createTaskSchema = z.object({
   earliest_start: z.string().date().nullable().optional(),
   due_date: z.string().date().nullable().optional(),
   due_date_recurrence: z.string().nullable().optional(),
-  scheduled_start: z.string().datetime().nullable().optional(),
-  scheduled_end: z.string().datetime().nullable().optional(),
+  scheduled_start: isoInstant().nullable().optional(),
+  scheduled_end: isoInstant().nullable().optional(),
   location: z.string().max(500).nullable().optional(),
   visibility: z.enum(['busy', 'free']).default('busy'),
   privacy: z.enum(['private', 'public']).default('private'),
   flexibility: z.enum(['flexible', 'not_flexible']).default('flexible'),
   status: z.enum(['backlog', 'in_progress', 'check', 'done']).default('backlog'),
   board: z.enum(['current', 'future']).default('current'),
-  completed_at: z.string().datetime().nullable().optional(),
+  completed_at: isoInstant().nullable().optional(),
   vault_ref: z.string().regex(VAULT_REF_PATTERN).nullable().optional(),
   tag_ids: z.array(z.string().uuid()).max(50).default([]),
   reminders: z.array(z.object({ minutes_before: z.number().int().positive() })).max(20).default([]),
@@ -59,8 +60,8 @@ export const splitTaskSchema = z.object({
 })
 
 export const scheduleTaskSchema = z.object({
-  scheduled_start: z.string().datetime(),
-  scheduled_end: z.string().datetime(),
+  scheduled_start: isoInstant(),
+  scheduled_end: isoInstant(),
 })
 
 export const createSubtaskSchema = z.object({

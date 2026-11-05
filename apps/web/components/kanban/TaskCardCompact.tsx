@@ -3,17 +3,11 @@
 import * as React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CheckCircle2, Circle } from 'lucide-react'
-import type { Task, TaskImportance } from '@poolendar/types'
-import { isToday, isPast, format, parseISO } from 'date-fns'
-
-const IMPORTANCE_COLORS: Record<TaskImportance, string> = {
-  highest: '#ef4444',
-  high: '#f97316',
-  normal: 'var(--muted)',
-  low: '#6b7280',
-  lowest: '#4b5563',
-}
+import type { Task } from '@poolendar/types'
+import { isToday, format } from 'date-fns'
+import { cn } from '@/lib/utils'
+import { toDueDay } from '@/lib/tasks/grouping'
+import { DonePaw, PriorityCat } from '@/components/brand/cats'
 
 interface TaskCardCompactProps {
   task: Task
@@ -21,6 +15,7 @@ interface TaskCardCompactProps {
   onTaskComplete: (taskId: string) => void
 }
 
+/** One-line card for long columns (more than ten tasks). */
 export const TaskCardCompact = React.memo(function TaskCardCompact({
   task,
   onTaskClick,
@@ -45,82 +40,40 @@ export const TaskCardCompact = React.memo(function TaskCardCompact({
   }
 
   const isCompleted = task.status === 'done'
-
-  function getDueDateColor(): string {
-    if (!task.due_date) return 'var(--muted)'
-    const date = parseISO(task.due_date)
-    if (isPast(date) && !isToday(date)) return 'var(--destructive)'
-    if (isToday(date)) return 'var(--accent)'
-    return 'var(--muted)'
-  }
-
-  function formatDueDate(): string | null {
-    if (!task.due_date) return null
-    const date = parseISO(task.due_date)
-    if (isToday(date)) return 'Today'
-    return format(date, 'MMM d')
-  }
+  const due = task.due_date ? toDueDay(task.due_date) : null
+  const dueText = due ? (isToday(due) ? 'Today' : format(due, 'MMM d')) : null
+  const dueTone = due && !isToday(due) && due < new Date() && !isCompleted ? 'is-od' : due && isToday(due) ? 'is-td' : undefined
 
   return (
     <div
       ref={setNodeRef}
       data-task-card
       data-task-id={task.id}
-      style={{
-        ...style,
-        backgroundColor: 'var(--surface)',
-        borderColor: 'var(--border)',
-      }}
-      className="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer hover:border-[var(--accent)]/30 transition-colors duration-150"
+      style={style}
+      className={cn('meow-card is-compact cursor-grab', isCompleted && 'is-done')}
       onClick={() => onTaskClick(task)}
       {...attributes}
       {...listeners}
     >
       <button
         type="button"
-        className="shrink-0"
+        className="meow-ck"
+        aria-label={isCompleted ? 'Reopen task' : 'Complete task'}
         onClick={(e) => {
           e.stopPropagation()
           onTaskComplete(task.id)
         }}
       >
-        {isCompleted ? (
-          <CheckCircle2
-            size={16}
-            style={{ color: 'var(--success)' }}
-          />
-        ) : (
-          <Circle
-            size={16}
-            style={{ color: 'var(--muted)' }}
-            className="hover:text-[var(--accent)] transition-colors"
-          />
-        )}
+        {isCompleted && <DonePaw />}
       </button>
 
-      <span
-        className="text-sm truncate flex-1"
-        style={{
-          color: isCompleted ? 'var(--muted)' : 'var(--fg)',
-          textDecoration: isCompleted ? 'line-through' : 'none',
-        }}
-      >
-        {task.title}
+      <span className="meow-compact-title">{task.title}</span>
+
+      <span className="meow-compact-cat" aria-hidden="true">
+        <PriorityCat importance={task.importance} />
       </span>
 
-      <span
-        className="shrink-0 w-2 h-2 rounded-full"
-        style={{ backgroundColor: IMPORTANCE_COLORS[task.importance] }}
-      />
-
-      {formatDueDate() && (
-        <span
-          className="text-xs shrink-0"
-          style={{ color: getDueDateColor() }}
-        >
-          {formatDueDate()}
-        </span>
-      )}
+      {dueText && <span className={cn('meow-compact-due', dueTone)}>{dueText}</span>}
     </div>
   )
 })

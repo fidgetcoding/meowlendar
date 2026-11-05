@@ -9,7 +9,6 @@ import { useCreateEvent, useUpdateEvent, useDeleteEvent } from '@/lib/hooks/use-
 import { useCreateTask, useDeleteTask, useCompleteTask } from '@/lib/hooks/use-tasks'
 import {
   useCreateRoutine,
-  useDeleteRoutine,
   useCompleteRoutineInstance,
   useSkipRoutineInstance,
 } from '@/lib/hooks/use-routines'
@@ -39,7 +38,7 @@ export function useCalendarContextActions({
   currentDate,
 }: Params) {
   const queryClient = useQueryClient()
-  const { contextMenu, openEditForm } = useUIStore()
+  const { contextMenu, openEditForm, openRoutineDeletePrompt } = useUIStore()
 
   const createEvent = useCreateEvent()
   const updateEvent = useUpdateEvent()
@@ -48,7 +47,6 @@ export function useCalendarContextActions({
   const deleteTask = useDeleteTask()
   const completeTask = useCompleteTask()
   const createRoutine = useCreateRoutine()
-  const deleteRoutine = useDeleteRoutine()
   const completeRoutineInstance = useCompleteRoutineInstance()
   const skipRoutineInstance = useSkipRoutineInstance()
 
@@ -86,7 +84,11 @@ export function useCalendarContextActions({
     if (!itemId || !itemType) return
     if (itemType === 'event') deleteEvent.mutate(itemId)
     else if (itemType === 'task') deleteTask.mutate(itemId)
-    else deleteRoutine.mutate(parseRoutineItemId(itemId).routineId)
+    else {
+      // Which occurrences go is the user's call: the scope prompt asks, then deletes with undo.
+      const { routineId, date } = parseRoutineItemId(itemId)
+      openRoutineDeletePrompt({ routineId, date })
+    }
   }
 
   function onComplete() {

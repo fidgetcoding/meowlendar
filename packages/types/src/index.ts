@@ -13,6 +13,7 @@ export type {
   TaskStatus,
   TaskBoard,
   TaskImportance,
+  TaskOrigin,
 } from './task'
 export type {
   Routine,
@@ -38,5 +39,6 @@ export type {
   CalendarItem,
   CalendarItemKind,
   RoutineInstanceItem,
+  EventCopyRef,
   ApiError,
 } from './api'

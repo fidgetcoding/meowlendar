@@ -35,6 +35,29 @@ test.describe('external booking page (#57b)', () => {
   })
 })
 
+// The host's booking panel, beside the ribbon like Morgen (needs the signed-in seed user).
+test.describe('booking panel', () => {
+  test.beforeEach(() => {
+    test.skip(!E2E_LIVE, 'requires a live Supabase stack (set E2E_BASE)')
+  })
+
+  test('opens on the left of the calendar with the page link and the public links', async ({ page }) => {
+    await page.goto('/')
+    const column = page.locator('[data-day-column]').first()
+    await column.waitFor({ state: 'visible' })
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Booking' }).click()
+
+    const panel = page.getByRole('complementary', { name: 'Booking' }).first()
+    await expect(panel.getByRole('heading', { name: 'Booking page' })).toBeVisible()
+    await expect(panel.getByRole('link', { name: 'Link to your booking page' })).toHaveAttribute('href', new RegExp(`/u/${SEED_USERNAME}$`))
+    await expect(panel.getByRole('region', { name: 'Public links' }).getByText(SEED.bookingLinkName)).toBeVisible()
+    await expect(panel.getByText(/30 min/)).toBeVisible()
+
+    const [box, col] = await Promise.all([panel.boundingBox(), column.boundingBox()])
+    expect(box!.x + box!.width).toBeLessThanOrEqual(col!.x)
+  })
+})
+
 // The seed user's username comes from the part of the email before the @.
 const SEED_USERNAME = 'e2e'
 

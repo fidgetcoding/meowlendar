@@ -1,7 +1,7 @@
 // A small in-memory Google Calendar. It follows the behavior the app depends on:
 // OAuth code and refresh exchanges, calendarList, per-calendar sync tokens that
 // only return changes since they were issued, a 410 for a token it no longer
-// honours, etags, If-Match conflicts, watch channels, and extendedProperties.
+// honours, etags, If-Match conflicts, watch channels, extendedProperties and iCalUIDs.
 // It is not Google, and passing against it is not proof against Google.
 import { createServer } from 'node:http'
 
@@ -51,10 +51,14 @@ export function createGoogleFake() {
     const n = tick()
     const eventId = id ?? input.id ?? `g${n}`
     const prev = cal.events.get(eventId)
+    // As on Google: an event made there gets `<id>@google.com`, and a changed or
+    // cancelled occurrence shares its series' iCalUID. Imported invites bring their own.
+    const series = input.recurringEventId ?? prev?.recurringEventId ?? eventId
     const event = {
       ...(prev ?? {}),
       ...input,
       id: eventId,
+      iCalUID: input.iCalUID ?? prev?.iCalUID ?? `${series}@google.com`,
       status: input.status ?? prev?.status ?? 'confirmed',
       etag: etag(n),
       updated: new Date().toISOString(),
@@ -218,7 +222,9 @@ export function createGoogleFake() {
         }
         events = events.filter((e) => e.__seq > since)
       } else {
-        events = events.filter((e) => e.status !== 'cancelled')
+        // Without showDeleted or singleEvents, Google still lists cancelled
+        // occurrences of a series. Only a whole cancelled event is left out.
+        events = events.filter((e) => e.status !== 'cancelled' || e.recurringEventId)
       }
       return send(res, 200, {
         items: events.map(publicEvent),

@@ -6,6 +6,9 @@ import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
 import { CalendarItem } from './CalendarItem'
+import { fitLoaf } from './loaf-fit'
+import { Loaf } from '@/components/brand/cats'
+import { useNow } from '@/lib/hooks/use-now'
 
 interface DayColumnProps {
   date: Date
@@ -110,7 +113,6 @@ function snapToResolution(minutes: number, resolution: number): number {
   return Math.round(minutes / resolution) * resolution
 }
 
-const CURRENT_TIME_UPDATE_MS = 60_000
 const MIN_ITEM_HEIGHT = 20
 
 export const DayColumn = React.memo(function DayColumn({
@@ -129,10 +131,9 @@ export const DayColumn = React.memo(function DayColumn({
   onRoutineCheckboxClick,
   onTaskCheckboxClick,
 }: DayColumnProps) {
-  const [currentMinutes, setCurrentMinutes] = React.useState(() => {
-    const now = new Date()
-    return now.getHours() * 60 + now.getMinutes()
-  })
+  // Null until mounted in the browser (and on other days), so the server never draws the now line.
+  const now = useNow(isToday)
+  const currentMinutes = now ? now.getHours() * 60 + now.getMinutes() : null
 
   const [dragCreate, setDragCreate] = React.useState<DragCreateState | null>(null)
   const isDraggingRef = React.useRef(false)
@@ -154,16 +155,20 @@ export const DayColumn = React.memo(function DayColumn({
     [setNodeRef]
   )
 
+  // Keep event text clear of the loaf after every render of today's column...
+  React.useLayoutEffect(() => {
+    if (isToday && columnRef.current) fitLoaf(columnRef.current)
+  })
+
+  // ...and whenever the column resizes or the fonts finish loading.
   React.useEffect(() => {
-    if (!isToday) return
-
-    function tick() {
-      const now = new Date()
-      setCurrentMinutes(now.getHours() * 60 + now.getMinutes())
-    }
-
-    const id = setInterval(tick, CURRENT_TIME_UPDATE_MS)
-    return () => clearInterval(id)
+    const el = columnRef.current
+    if (!isToday || !el) return
+    const refit = () => fitLoaf(el)
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refit) : null
+    observer?.observe(el)
+    document.fonts?.ready.then(refit).catch(() => {})
+    return () => observer?.disconnect()
   }, [isToday])
 
   // Clean up single-click timer on unmount
@@ -177,7 +182,7 @@ export const DayColumn = React.memo(function DayColumn({
 
   const totalHeight = (endHour - startHour) * hourHeight
   const layout = computeOverlapLayout(items, hourHeight)
-  const currentTimeTop = (currentMinutes / 60 - startHour) * hourHeight
+  const currentTimeTop = currentMinutes === null ? 0 : (currentMinutes / 60 - startHour) * hourHeight
 
   function yOffsetToTime(yOffset: number): Date {
     const rawMinutes = (yOffset / hourHeight) * 60 + startHour * 60
@@ -333,11 +338,6 @@ export const DayColumn = React.memo(function DayColumn({
 
   const dragPreview = computeDragPreview()
 
-  const hours: number[] = []
-  for (let h = startHour; h < endHour; h++) {
-    hours.push(h)
-  }
-
   const dayColumnDate = format(date, 'yyyy-MM-dd')
 
   return (
@@ -345,12 +345,12 @@ export const DayColumn = React.memo(function DayColumn({
       ref={combinedRef}
       data-day-column={dayColumnDate}
       className={cn(
-        'relative flex-1 min-w-0',
-        'border-l border-[var(--border)]',
-        isOver && 'bg-[var(--surface-hover)]',
+        'meow-col relative flex-1 min-w-0',
+        isToday && 'is-today',
+        isOver && 'is-over',
         dragCreate && isDraggingRef.current && 'select-none'
       )}
-      style={{ height: totalHeight }}
+      style={{ height: totalHeight, '--H': `${hourHeight}px` } as React.CSSProperties}
       onClick={handleColumnClick}
       onDoubleClick={handleColumnDoubleClick}
       onMouseDown={handleMouseDown}
@@ -358,34 +358,16 @@ export const DayColumn = React.memo(function DayColumn({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
     >
-      {hours.map((hour) => (
-        <React.Fragment key={hour}>
-          <div
-            className="absolute left-0 right-0 border-t border-[var(--border)] opacity-50"
-            style={{ top: (hour - startHour) * hourHeight }}
-          />
-          <div
-            className="absolute left-0 right-0 border-t border-[var(--border)] opacity-25"
-            style={{
-              top: (hour - startHour) * hourHeight + hourHeight / 2,
-              borderStyle: 'dashed',
-            }}
-          />
-        </React.Fragment>
-      ))}
-
       {/* Drag-to-create preview */}
       {dragPreview && (
         <div
-          className="absolute left-0 right-0 z-20 pointer-events-none rounded bg-indigo-500/30 border-2 border-dashed border-indigo-500"
+          className="meow-dragnew"
           style={{
             top: dragPreview.top,
             height: Math.max(dragPreview.height, 4),
           }}
         >
-          <span className="absolute left-2 top-1 text-[10px] font-medium text-indigo-300">
-            {dragPreview.label}
-          </span>
+          <span>{dragPreview.label}</span>
         </div>
       )}
 
@@ -404,11 +386,13 @@ export const DayColumn = React.memo(function DayColumn({
             hourHeight={hourHeight}
             resizeResolution={draggingResolution}
             dimPastEvents={dimPastEvents}
+            narrow={totalColumns > 1}
+            nowMs={now ? now.getTime() : undefined}
             style={{
-              top,
-              height,
-              width: `calc(${widthPercent}% - 2px)`,
-              left: `${leftPercent}%`,
+              top: top + 1,
+              height: height - 2,
+              width: `calc(${widthPercent}% - ${totalColumns > 1 ? 4 : 6}px)`,
+              left: `calc(${leftPercent}% + 3px)`,
             }}
             onItemClick={onItemClick}
             onItemDoubleClick={onItemDoubleClick}
@@ -419,31 +403,13 @@ export const DayColumn = React.memo(function DayColumn({
         )
       })}
 
-      {isToday && (
-        <div
-          className="absolute left-0 right-0 z-30 pointer-events-none"
-          style={{ top: currentTimeTop }}
-        >
-          <div className="relative">
-            <div
-              className="absolute rounded-full"
-              style={{
-                width: 10,
-                height: 10,
-                backgroundColor: '#ef4444',
-                left: -5,
-                top: -4,
-              }}
-            />
-            <div
-              className="absolute left-0 right-0"
-              style={{
-                height: 2,
-                backgroundColor: '#ef4444',
-              }}
-            />
+      {currentMinutes !== null && currentMinutes >= startHour * 60 && currentMinutes < endHour * 60 && (
+        <>
+          <div className="meow-now" style={{ top: currentTimeTop - 1 }} />
+          <div className="meow-nowcat" data-now-loaf style={{ top: currentTimeTop }}>
+            <Loaf />
           </div>
-        </div>
+        </>
       )}
     </div>
   )

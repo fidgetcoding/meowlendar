@@ -8,6 +8,8 @@ import { rateLimitAsync } from '../rate-limit'
 export interface AuthResult {
   userId: string
   supabase: Awaited<ReturnType<typeof createClient>>
+  /** Present only when an API key (not a browser session) authenticated the request. */
+  apiKeyId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@ export async function authenticate(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const supabase = createUserScopedClient(accessToken) as AuthResult['supabase']
-    return { userId: apiKey.userId, supabase }
+    return { userId: apiKey.userId, supabase, apiKeyId: apiKey.keyId }
   }
 
   // 2. Session auth (browser). RLS-respecting SSR client, unlimited.

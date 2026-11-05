@@ -20,6 +20,8 @@ pnpm dev
 
 Open http://localhost:3000, click **Sign up**, and create an account with any email and password. Local email confirmation is off. If you turn it on, the mail lands at http://127.0.0.1:54324.
 
+Setup also makes a **demo account**, `demo@meowlendar.com` / `meowlendar`, with a sample week around today: events on four calendars, a routine, tasks in every column (two of them "By your agent") and a booking link. Sign in with it to look around before you sign up. `pnpm setup:local --no-demo` skips it, and `--reset-demo` replaces it with a fresh week. Setup only makes it on a Supabase running on your own machine and refuses any other URL. The sign-in page offers it only when `DEMO_ACCOUNT=1`, which setup writes to `apps/web/.env.local`. **Hosted installs don't get it.**
+
 Use `localhost`, not `127.0.0.1`, in the browser. Sessions are per host and the Google callback uses `NEXT_PUBLIC_APP_URL`.
 
 **You don't need Google.** Every account starts with a local calendar. Events, recurring events, tasks, routines, the board, booking links and the MCP all work on it. Add more under **Settings > Calendars**.

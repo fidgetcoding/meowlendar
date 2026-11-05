@@ -1,17 +1,16 @@
 'use client'
 
 import * as React from 'react'
-import { format } from 'date-fns'
+import { format, isSameDay, parseISO } from 'date-fns'
 import { useDraggable } from '@dnd-kit/core'
 import {
   ChevronDown,
   ChevronRight,
-  CheckSquare,
-  AlertCircle,
-  Inbox,
   Search,
   Plus,
   Repeat2,
+  SquareCheck,
+  PanelRightClose,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTasks } from '@/lib/hooks/use-tasks'
@@ -22,12 +21,16 @@ import {
   countGrouped,
   filterTasks,
   isViewFilterActive,
+  toDueDay,
   EMPTY_VIEW_FILTER,
   type TaskViewFilter,
 } from '@/lib/tasks/grouping'
+import { isAgentTask } from '@/lib/tasks/agent'
 import { PanelViewToggle } from '@/components/PanelViewToggle'
+import { AgentLabel, DonePaw } from '@/components/brand/cats'
 import { ViewFilterMenu } from './TaskViewFilterMenu'
 import { RoutinesPanel } from './RoutinesPanel'
+import { UpNextCard } from './UpNext'
 import type { Task } from '@poolendar/types'
 
 // ---------------------------------------------------------------------------
@@ -39,6 +42,10 @@ interface TaskPanelProps {
   tasks?: Task[]
   onTaskClick?: (taskId: string) => void
   onTaskComplete?: (taskId: string) => void
+  /** Desktop: closes the panel (the ribbon's Calendar button opens it again). */
+  onHide?: () => void
+  /** Rendered at the foot of the scrolling list (the calendar toggles). */
+  children?: React.ReactNode
 }
 
 // ---------------------------------------------------------------------------
@@ -48,54 +55,31 @@ interface TaskPanelProps {
 interface SectionProps {
   title: string
   count: number
-  icon?: React.ReactNode
   children: React.ReactNode
   defaultOpen?: boolean
-  accentColor?: string
+  tone?: 'overdue'
 }
 
-function Section({ title, count, icon, children, defaultOpen = true, accentColor }: SectionProps) {
+function Section({ title, count, children, defaultOpen = true, tone }: SectionProps) {
   const [open, setOpen] = React.useState(defaultOpen)
 
   if (count === 0) return null
 
   return (
-    <div className="mb-1">
+    <div className="meow-tl-sec">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={cn(
-          'flex items-center gap-2 w-full px-3 py-1.5 text-sm font-medium',
-          'hover:bg-[var(--surface-hover)] rounded transition-colors duration-150'
-        )}
-        style={{ color: accentColor || 'var(--fg)' }}
+        aria-expanded={open}
+        className={cn('meow-tl-sech', tone === 'overdue' && 'is-overdue')}
       >
-        {open ? (
-          <ChevronDown size={14} className="shrink-0" />
-        ) : (
-          <ChevronRight size={14} className="shrink-0" />
-        )}
-        {icon}
+        {open ? <ChevronDown size={13} className="shrink-0" /> : <ChevronRight size={13} className="shrink-0" />}
         <span className="truncate">{title}</span>
-        <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
-          {count}
-        </span>
+        <span className="tabular-nums">{count}</span>
       </button>
-      {open && <div className="pl-1">{children}</div>}
+      {open && <div>{children}</div>}
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Importance colors
-// ---------------------------------------------------------------------------
-
-const IMPORTANCE_COLORS: Record<string, string> = {
-  highest: '#ef4444',
-  high: '#f97316',
-  normal: '#eab308',
-  low: '#3b82f6',
-  lowest: '#6b7280',
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +92,27 @@ interface TaskRowProps {
   onTaskComplete: (id: string) => void
 }
 
+function formatEstimate(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m ? `${h}h ${m}m` : `${h}h`
+}
+
+function dueLabel(task: Task, today: Date): { text: string; tone: 'overdue' | 'today' | null } | null {
+  if (!task.due_date) return null
+  const day = toDueDay(task.due_date)
+  if (day < today) return { text: 'Overdue', tone: 'overdue' }
+  if (isSameDay(day, today)) return { text: 'Today', tone: 'today' }
+  return { text: format(day, 'MMM d'), tone: null }
+}
+
 function TaskRow({ task, onTaskClick, onTaskComplete }: TaskRowProps) {
-  const color = IMPORTANCE_COLORS[task.importance] || 'var(--muted)'
   const isDone = task.status === 'done'
   const subtasks = task.subtasks ?? []
   const completedSubtasks = subtasks.filter((s) => s.completed).length
   const tags = task.tags ?? []
+  const due = dueLabel(task, new Date(new Date().setHours(0, 0, 0, 0)))
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `sidebar-task-${task.id}`,
@@ -128,11 +127,7 @@ function TaskRow({ task, onTaskClick, onTaskComplete }: TaskRowProps) {
     <div
       ref={setNodeRef}
       style={dragStyle}
-      className={cn(
-        'flex items-start gap-2 px-3 py-1.5 text-sm cursor-grab',
-        'hover:bg-[var(--surface-hover)] rounded transition-colors duration-150 group',
-        isDragging && 'opacity-50'
-      )}
+      className={cn('meow-tl-row group cursor-grab', isDragging && 'opacity-50')}
       onClick={() => onTaskClick(task.id)}
       {...listeners}
       {...attributes}
@@ -145,106 +140,66 @@ function TaskRow({ task, onTaskClick, onTaskComplete }: TaskRowProps) {
         }
       }}
     >
-      {/* Checkbox */}
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation()
           onTaskComplete(task.id)
         }}
-        className={cn(
-          'shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center',
-          'transition-colors duration-150 hover:border-[var(--accent)]'
-        )}
-        style={{ borderColor: isDone ? 'var(--accent)' : 'var(--border)' }}
+        className="meow-ck"
         aria-label={isDone ? 'Reopen task' : 'Complete task'}
       >
-        {isDone && <CheckSquare size={12} style={{ color: 'var(--accent)' }} />}
+        {isDone && <DonePaw />}
       </button>
 
-      {/* Importance dot */}
-      <span
-        className="w-1.5 h-1.5 rounded-full shrink-0 mt-2"
-        style={{ backgroundColor: color }}
-        aria-hidden="true"
-      />
-
-      {/* Title + tags + subtask info */}
-      <div className="flex-1 min-w-0">
-        <span
-          className={cn('block truncate', isDone && 'text-[var(--muted)] line-through')}
-          style={{ color: isDone ? undefined : 'var(--fg)' }}
-        >
-          {task.title}
-        </span>
-
-        {tags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mt-1">
-            {tags.map((tag) => (
-              <span
-                key={tag.id}
-                className="text-[10px] px-1.5 py-0.5 rounded-full leading-none"
-                style={{ backgroundColor: `${tag.color}22`, color: tag.color }}
-              >
-                {tag.prefix ? `${tag.prefix} ${tag.name}` : tag.name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {subtasks.length > 0 && (
-          <span className="text-[10px] text-[var(--muted)]">
-            {completedSubtasks}/{subtasks.length} subtasks
-          </span>
-        )}
+      <div className="min-w-0">
+        <div className={cn('meow-tl-title', isDone && 'is-done')}>{task.title}</div>
+        <div className="meow-tl-ms">
+          {due && <span className={cn(due.tone === 'overdue' && 'is-od', due.tone === 'today' && 'is-td')}>{due.text}</span>}
+          {task.scheduled_start && <span>{format(parseISO(task.scheduled_start), 'EEE h:mm a')}</span>}
+          {task.time_estimate_minutes ? <span>{formatEstimate(task.time_estimate_minutes)}</span> : null}
+          {subtasks.length > 0 && (
+            <span className="tabular-nums">
+              {completedSubtasks}/{subtasks.length} subtasks
+            </span>
+          )}
+          {tags.map((tag) => (
+            <span key={tag.id} className="meow-tag" style={{ '--tc': tag.color } as React.CSSProperties}>
+              {tag.prefix ? `${tag.prefix} ${tag.name}` : tag.name}
+            </span>
+          ))}
+          {isAgentTask(task) && <AgentLabel />}
+        </div>
       </div>
-
-      {/* Due date badge */}
-      {task.due_date && (
-        <span className="text-[10px] text-[var(--muted)] shrink-0 mt-0.5">
-          {format(new Date(task.due_date), 'MMM d')}
-        </span>
-      )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Mode tabs (Tasks / Routines)
+// Mode tabs (Tasks / Routines) + list/board toggle
 // ---------------------------------------------------------------------------
 
-function ModeTabs({ mode }: { mode: 'tasks' | 'routines' }) {
+function ModeTabs({ mode, onHide }: { mode: 'tasks' | 'routines'; onHide?: () => void }) {
   const setMode = useUIStore((s) => s.setTaskPanelMode)
   return (
-    <div className="flex items-center gap-1 px-3 pt-2 pb-1 shrink-0">
-      <button
-        type="button"
-        onClick={() => setMode('tasks')}
-        className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors duration-150',
-          mode === 'tasks'
-            ? 'text-[var(--fg)] bg-[var(--surface-hover)]'
-            : 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-        )}
-      >
-        <CheckSquare size={12} />
-        Tasks
-      </button>
-      <button
-        type="button"
-        onClick={() => setMode('routines')}
-        className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors duration-150',
-          mode === 'routines'
-            ? 'text-[var(--fg)] bg-[var(--surface-hover)]'
-            : 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-        )}
-      >
-        <Repeat2 size={12} />
-        Routines
-      </button>
-      <div className="ml-auto">
+    <div className="meow-tp-top">
+      <div className="meow-seg" role="group" aria-label="Task panel mode">
+        <button type="button" onClick={() => setMode('tasks')} className={cn(mode === 'tasks' && 'is-on')}>
+          <SquareCheck size={13} />
+          Tasks
+        </button>
+        <button type="button" onClick={() => setMode('routines')} className={cn(mode === 'routines' && 'is-on')}>
+          <Repeat2 size={13} />
+          Routines
+        </button>
+      </div>
+      <div className="ml-auto flex items-center gap-1">
         <PanelViewToggle />
+        {onHide && (
+          <button type="button" onClick={onHide} className="meow-icon-btn" aria-label="Hide task panel" title="Hide task panel (Alt+A)">
+            <PanelRightClose size={16} strokeWidth={1.6} />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -258,6 +213,8 @@ export function TaskPanel({
   tasks: tasksProp,
   onTaskClick: onTaskClickProp,
   onTaskComplete: onTaskCompleteProp,
+  onHide,
+  children,
 }: TaskPanelProps) {
   const { data: fetchedTasks } = useTasks()
   const undoable = useUndoable()
@@ -302,14 +259,12 @@ export function TaskPanel({
 
   if (taskPanelMode === 'routines') {
     return (
-      <div
-        className="h-full overflow-y-auto flex flex-col"
-        style={{ backgroundColor: 'var(--bg)', borderRight: '1px solid var(--border)' }}
-      >
-        <ModeTabs mode="routines" />
-        <div className="flex-1 overflow-hidden">
+      <div className="meow-tp">
+        <ModeTabs mode="routines" onHide={onHide} />
+        <div className="flex-1 min-h-0 overflow-hidden">
           <RoutinesPanel />
         </div>
+        {children && <div className="meow-tp-foot">{children}</div>}
       </div>
     )
   }
@@ -322,105 +277,63 @@ export function TaskPanel({
   const groups = groupTasks(visible)
   const totalActive = countGrouped(groups)
 
+  const rows = (list: Task[]) =>
+    list.map((t) => <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />)
+
   return (
-    <div
-      className="h-full overflow-y-auto flex flex-col"
-      style={{ backgroundColor: 'var(--bg)', borderRight: '1px solid var(--border)' }}
-    >
-      <ModeTabs mode="tasks" />
+    <div className="meow-tp">
+      <ModeTabs mode="tasks" onHide={onHide} />
 
-      {/* Header with title, filter and add button */}
-      <div className="flex items-center justify-between px-3 py-2 shrink-0">
-        <div
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: 'var(--muted)' }}
-        >
-          Tasks
-          {totalActive > 0 && <span className="ml-1.5 tabular-nums">({totalActive})</span>}
-        </div>
-        <div className="flex items-center gap-1">
-          <ViewFilterMenu filter={filter} onChange={setFilter} />
-          <button
-            type="button"
-            onClick={handleCreateTask}
-            className={cn(
-              'flex items-center justify-center w-6 h-6 rounded',
-              'text-[var(--muted)] hover:text-[var(--fg)]',
-              'hover:bg-[var(--surface-hover)] transition-colors duration-150'
-            )}
-            aria-label="Create task"
-            title="Create task"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+      <label className="meow-tp-search">
+        <Search size={16} strokeWidth={1.6} className="shrink-0" />
+        <input
+          type="text"
+          placeholder="Search tasks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </label>
+
+      <UpNextCard />
+
+      <div className="meow-tp-h">
+        <h4>
+          Open tasks
+          {totalActive > 0 && <small className="tabular-nums">{totalActive}</small>}
+        </h4>
+        <ViewFilterMenu filter={filter} onChange={setFilter} />
       </div>
 
-      {/* Search input */}
-      <div className="px-3 pb-2 shrink-0">
-        <div
-          className="flex items-center gap-2 px-2 py-1 rounded"
-          style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          <Search size={12} style={{ color: 'var(--muted)' }} className="shrink-0" />
-          <input
-            type="text"
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn('flex-1 bg-transparent text-xs outline-none', 'placeholder:text-[var(--muted)]')}
-            style={{ color: 'var(--fg)' }}
-          />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto py-1">
-        <Section
-          title="Overdue"
-          count={groups.overdue.length}
-          icon={<AlertCircle size={14} className="shrink-0" />}
-          accentColor="#ef4444"
-        >
-          {groups.overdue.map((t) => (
-            <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />
-          ))}
+      <div className="meow-tl">
+        <Section title="Overdue" count={groups.overdue.length} tone="overdue">
+          {rows(groups.overdue)}
         </Section>
-
         <Section title="Due today" count={groups.dueToday.length}>
-          {groups.dueToday.map((t) => (
-            <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />
-          ))}
+          {rows(groups.dueToday)}
         </Section>
-
         <Section title="Due tomorrow" count={groups.dueTomorrow.length}>
-          {groups.dueTomorrow.map((t) => (
-            <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />
-          ))}
+          {rows(groups.dueTomorrow)}
         </Section>
-
-        <Section title="Due soon" count={groups.dueSoon.length} accentColor="#eab308" defaultOpen={false}>
-          {groups.dueSoon.map((t) => (
-            <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />
-          ))}
+        <Section title="Due soon" count={groups.dueSoon.length} defaultOpen={false}>
+          {rows(groups.dueSoon)}
         </Section>
-
-        <Section
-          title="Inbox"
-          count={groups.inbox.length}
-          icon={<Inbox size={14} className="shrink-0" />}
-          defaultOpen={false}
-        >
-          {groups.inbox.map((t) => (
-            <TaskRow key={t.id} task={t} onTaskClick={handleTaskClick} onTaskComplete={handleTaskComplete} />
-          ))}
+        <Section title="Inbox" count={groups.inbox.length} defaultOpen={false}>
+          {rows(groups.inbox)}
         </Section>
 
         {totalActive === 0 && (
-          <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">
+          <p className="meow-tl-empty">
             {searchQuery.trim() || isViewFilterActive(filter) ? 'No matching tasks' : 'No tasks to show'}
-          </div>
+          </p>
         )}
+
+        {children && <div className="meow-tp-cals">{children}</div>}
       </div>
+
+      <button type="button" onClick={handleCreateTask} className="meow-create">
+        <Plus size={18} strokeWidth={1.8} />
+        Create task
+      </button>
     </div>
   )
 }

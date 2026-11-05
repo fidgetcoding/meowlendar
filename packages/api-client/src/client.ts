@@ -66,9 +66,11 @@ export class PoolendarClient {
 
   // Events — unions events + scheduled tasks (+ routine instances) in the window
   // per spec #22. Each item carries a `kind` discriminator. `include` narrows
-  // the kinds (default: events,tasks,routines).
+  // the kinds (default: events,tasks,routines). A meeting on several calendars or
+  // Google accounts comes back once, its other copies in `also_on`; `merge: false`
+  // returns every copy instead.
   async listEvents(
-    params: { start: string; end: string; calendar_id?: string; include?: string } & PageParams
+    params: { start: string; end: string; calendar_id?: string; include?: string; merge?: boolean } & PageParams
   ) {
     const searchParams = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {
@@ -202,12 +204,13 @@ export class PoolendarClient {
   // Convert
   async convert(data: { source_type: string; source_id: string; target_type: string; calendar_id?: string; repeat_pattern?: string }) { return this.request<CalendarEvent | Task | Routine>('/api/convert', { method: 'POST', body: JSON.stringify(data) }) }
 
-  // Search
-  async search(q: string, types?: string[], page?: PageParams) {
+  // Search. A meeting on several calendars is one result unless `merge` is false.
+  async search(q: string, types?: string[], page?: PageParams, options?: { merge?: boolean }) {
     const params = new URLSearchParams({ q })
     if (types?.length) {
       params.set('types', types.join(','))
     }
+    if (options?.merge === false) params.set('merge', 'false')
     if (page?.cursor) params.set('cursor', page.cursor)
     if (page?.limit != null) params.set('limit', String(page.limit))
     return this.request<Paginated<SearchResult>>(`/api/search?${params}`)

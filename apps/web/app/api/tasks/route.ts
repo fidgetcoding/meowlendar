@@ -3,8 +3,10 @@ import { readAll } from '@/lib/read-all'
 import { omit } from '@/lib/omit'
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, isAuthError, validationError } from '../../../lib/auth/helpers'
+import { originOf } from '../../../lib/auth/origin'
 import { createTaskSchema } from '@poolendar/validators'
 import { paginate } from '../../../lib/pagination'
+import { alreadyCreated, clientIdOf } from '../../../lib/client-id'
 
 // Postgres unique_violation. The only unique index on a task is (user_id, vault_ref).
 const UNIQUE_VIOLATION = '23505'
@@ -120,12 +122,25 @@ export async function POST(request: NextRequest) {
   // Atomic multi-table write (task + tags + subtasks) via a SECURITY INVOKER
   // Postgres function, so a mid-sequence failure can't leave a half-written
   // task. RLS still applies (user_id := auth.uid() inside the function).
+  // The same create sent twice (the page resends it while unloading) makes one task.
+  const clientId = clientIdOf(body)
+  if (clientId) {
+    const already = await alreadyCreated(supabase, 'tasks', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
+
+  // created_via is decided here from the auth, never taken from the body (the schema drops it):
+  // an API-key create is an agent's task and shows "By your agent" in the app.
   const { data: task, error: rpcError } = await supabase.rpc('create_task_with_children', {
-    p_task: input,
+    p_task: { ...input, ...(clientId ? { id: clientId } : {}), created_via: originOf(auth) },
     p_tag_ids: tag_ids,
     p_subtasks: subtasks ?? [],
   })
 
+  if (rpcError?.code === UNIQUE_VIOLATION && clientId) {
+    const already = await alreadyCreated(supabase, 'tasks', clientId, userId)
+    if (already) return NextResponse.json(already, { status: 200 })
+  }
   if (rpcError?.code === UNIQUE_VIOLATION) {
     return NextResponse.json(
       { error: 'Another task already uses this vault_ref' },

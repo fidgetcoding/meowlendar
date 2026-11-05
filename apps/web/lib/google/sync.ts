@@ -80,6 +80,8 @@ export function mapGoogleEventToLocal(
     email: a.email,
     name: a.displayName ?? undefined,
     response_status: a.responseStatus ?? 'needsAction',
+    // Which guest is the account this copy came from.
+    ...(a.self ? { self: true } : {}),
   }))
 
   const reminders: CalendarEvent['reminders'] =
@@ -128,6 +130,7 @@ export function mapGoogleEventToLocal(
     user_id: userId,
     calendar_id: calendarId,
     google_event_id: googleEvent.id,
+    ical_uid: googleEvent.iCalUID ?? null,
     title: googleEvent.summary ?? '(No title)',
     notes: googleEvent.description ?? null,
     start_time: startTime,
@@ -345,6 +348,8 @@ async function syncCalendar(
   let currentSyncToken = syncToken
   let newSyncToken: string | null = null
   let needsFullSync = !currentSyncToken
+  // Applied once every page is in: Google can list an occurrence before its series.
+  const occurrenceChanges: OccurrenceChange[] = []
 
   // Attempt incremental sync; fall back to full on 410
   const fetchPage = async () => {
@@ -399,14 +404,14 @@ async function syncCalendar(
 
     for (const googleEvent of events) {
       if (Date.now() - renewedAt > 30_000) { await renew(); renewedAt = Date.now() }
-      // Skip cancelled events in full sync — they're just noise
+      // In incremental sync, cancelled = delete signal. A full sync lists no deleted
+      // events except cancelled occurrences of a series, which the series must skip.
       if (
         googleEvent.status === 'cancelled' &&
         needsFullSync &&
-        !currentSyncToken
+        !currentSyncToken &&
+        !googleEvent.recurringEventId
       ) {
-        // In incremental sync, cancelled = delete signal
-        // In full sync, just skip them
         continue
       }
 
@@ -414,7 +419,8 @@ async function syncCalendar(
         supabase,
         googleEvent,
         localCalendarId,
-        userId
+        userId,
+        occurrenceChanges,
       )
       if (result === 'created') created++
       else if (result === 'updated') updated++
@@ -427,7 +433,23 @@ async function syncCalendar(
     }
   } while (pageToken)
 
+  for (const change of occurrenceChanges) {
+    await addMasterException(supabase, localCalendarId, change.masterGoogleId, change.original)
+  }
+  if (occurrenceChanges.length) await renew()
+
   return { created, updated, deleted, newSyncToken }
+}
+
+/** An occurrence changed or cancelled on Google, which its series stops showing. */
+interface OccurrenceChange {
+  masterGoogleId: string
+  original: { dateTime?: string; date?: string }
+}
+
+/** Removed occurrences, old and new, once each. */
+function mergeExceptions(kept: string[] | null | undefined, incoming: string[] | null | undefined): string[] {
+  return [...new Set([...(kept ?? []), ...(incoming ?? [])].map((value) => new Date(value).toISOString()))]
 }
 
 /** Records one occurrence of a series as removed from its master row. */
@@ -469,7 +491,8 @@ async function upsertEvent(
   supabase: ReturnType<typeof getServiceClient>,
   googleEvent: GoogleEvent,
   calendarId: string,
-  userId: string
+  userId: string,
+  occurrenceChanges: OccurrenceChange[],
 ): Promise<'created' | 'updated' | 'deleted'> {
   // A task we mirrored to this calendar. It stays a task and never becomes an event.
   const taskResult = await applyIncomingTaskEvent(supabase, googleEvent, userId, calendarId)
@@ -478,7 +501,7 @@ async function upsertEvent(
   // Check if this event already exists locally
   const { data: existing, error: readError } = await supabase
     .from('events')
-    .select('id, etag, sync_status, updated_at')
+    .select('id, etag, sync_status, updated_at, ical_uid, recurrence_exceptions')
     .eq('calendar_id', calendarId)
     .eq('google_event_id', googleEvent.id)
     .maybeSingle()
@@ -490,7 +513,7 @@ async function upsertEvent(
 
   // A changed or cancelled occurrence of a series: the master stops showing it.
   if (googleEvent.recurringEventId && googleEvent.originalStartTime) {
-    await addMasterException(supabase, calendarId, googleEvent.recurringEventId, googleEvent.originalStartTime)
+    occurrenceChanges.push({ masterGoogleId: googleEvent.recurringEventId, original: googleEvent.originalStartTime })
   }
 
   // Cancelled event = delete locally
@@ -498,6 +521,11 @@ async function upsertEvent(
     if (existing) {
       const { error } = await supabase.from('events').delete().eq('id', existing.id).eq('updated_at', existing.updated_at).neq('sync_status', 'pending_push')
       if (error) throw new Error(`Failed to delete synced event: ${error.message}`)
+    }
+    // A whole series gone takes its changed occurrences with it.
+    if (!googleEvent.recurringEventId) {
+      const { error } = await supabase.from('events').delete().eq('calendar_id', calendarId).eq('recurrence_id', googleEvent.id).neq('sync_status', 'pending_push')
+      if (error) throw new Error(`Failed to delete changed occurrences: ${error.message}`)
     }
     return 'deleted'
   }
@@ -511,9 +539,15 @@ async function upsertEvent(
       return 'updated'
     }
 
-    // Skip update if etag hasn't changed
-    if (existing.etag && existing.etag === googleEvent.etag) {
+    // Skip update if etag hasn't changed, unless the row predates storing the iCalUID
+    if (existing.etag && existing.etag === googleEvent.etag && (existing.ical_uid || !googleEvent.iCalUID)) {
       return 'updated' // No actual change, but counted for reporting
+    }
+
+    // Occurrences changed on Google are kept on the series row, not in its
+    // recurrence lines, so a change to the series must not bring them back.
+    if (mapped.recurrence_rule) {
+      mapped.recurrence_exceptions = mergeExceptions(existing.recurrence_exceptions, mapped.recurrence_exceptions)
     }
 
     const { error } = await supabase

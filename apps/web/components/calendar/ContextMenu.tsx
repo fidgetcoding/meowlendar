@@ -52,14 +52,14 @@ function MenuDivider() {
 }
 
 const COLOR_SWATCHES = [
-  '#ef4444',
-  '#f97316',
-  '#f9a825',
-  '#22c55e',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#64748b',
+  '#e8930c',
+  '#5a68d4',
+  '#cf5d78',
+  '#2b93b4',
+  '#3dab63',
+  '#6f7ae0',
+  '#c8432f',
+  '#8b7d69',
 ]
 
 function ColorRow({ onPick }: { onPick: (color: string) => void }) {

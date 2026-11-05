@@ -1,0 +1,73 @@
+/* Meowlendar V2 editor: the floating card for creating and editing events, tasks and routines
+   (Morgen-style popup in V2's light style). Dark only via the theme toggle. */
+
+/* Above the phone tab bar (z 50); the recurrence scope dialog sits above this (z 70). */
+.meow-ef{position:fixed;z-index:55;width:420px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:16px;box-shadow:0 2px 6px color-mix(in srgb,var(--ink) 6%,transparent),0 24px 60px -24px color-mix(in srgb,var(--perid) 45%,rgba(33,24,14,.35));font-family:var(--fu)}
+.meow-ef.is-centred{left:50%;top:50%;transform:translate(-50%,-50%);max-height:min(720px,calc(100vh - 32px))}
+.meow-ef.is-sheet{left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding-bottom:env(safe-area-inset-bottom,0px)}
+.meow-ef.is-sheet:before{content:'';display:block;width:40px;height:4px;border-radius:4px;background:var(--line2);margin:8px auto 0;flex:none}
+.meow-ef-scrim{position:fixed;inset:0;z-index:54;background:color-mix(in srgb,var(--ink) 18%,transparent)}
+
+/* the caret points at the item from the card's edge */
+.meow-ef-caret{position:absolute;width:14px;height:14px;background:var(--panel);border:1px solid var(--line2);transform:rotate(45deg);pointer-events:none}
+.meow-ef-caret.is-right{left:-8px;margin-top:-7px;border-top:0;border-right:0}
+.meow-ef-caret.is-left{right:-8px;margin-top:-7px;border-bottom:0;border-left:0}
+.meow-ef-caret.is-bottom{top:-8px;margin-left:-7px;border-bottom:0;border-right:0}
+.meow-ef-caret.is-top{bottom:-8px;margin-left:-7px;border-top:0;border-left:0}
+
+.meow-ef-top{display:flex;align-items:center;gap:10px;padding:12px 14px 6px 16px;flex:none}
+.meow-ef-cal{position:relative;display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:52%;font-size:13px;font-weight:600;color:var(--ink2);padding:4px 6px;margin-left:-6px;border-radius:8px;cursor:pointer}
+.meow-ef-cal:hover{background:var(--lit)}
+.meow-ef-cal select{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.meow-ef-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.meow-ef-tabs{margin-left:auto;display:inline-flex;padding:3px;border-radius:99px;background:var(--paper);border:1px solid var(--line2);flex:none}
+.meow-ef-tabs button{height:26px;padding:0 11px;border-radius:99px;font-size:12.5px;font-weight:600;color:var(--mut);transition:background .2s var(--ease),color .2s var(--ease)}
+.meow-ef-tabs button.is-on{background:var(--panel);color:var(--perid);box-shadow:0 1px 3px color-mix(in srgb,var(--ink) 14%,transparent)}
+[data-theme='dark'] .meow-ef-tabs button.is-on{color:var(--peri)}
+
+.meow-ef-body{flex:1;min-height:0;overflow-y:auto;padding:2px 16px 8px;scrollbar-width:thin}
+.meow-ef-title{width:100%;border:0;outline:none;background:transparent;font-family:var(--fd);font-size:24px;line-height:1.2;letter-spacing:-.015em;color:var(--ink);padding:4px 0 2px}
+.meow-ef-title::placeholder{color:color-mix(in srgb,var(--mut) 80%,transparent)}
+.meow-ef-notes{width:100%;border:0;outline:none;background:transparent;resize:none;font-size:13.5px;line-height:1.45;color:var(--ink2);padding:2px 0 8px}
+.meow-ef-notes::placeholder{color:var(--mut)}
+
+.meow-ef-row{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;align-items:start;padding:9px 0;border-top:1px solid var(--line)}
+.meow-ef-ic{color:var(--mut);margin-top:7px}
+.meow-ef-rowc{min-width:0}
+.meow-ef-block{display:grid;grid-template-columns:76px minmax(0,1fr);column-gap:10px;row-gap:4px;align-items:center}
+.meow-ef-bl{justify-self:end;font-size:12.5px;color:var(--mut);white-space:nowrap}
+.meow-ef-bv{min-width:0}
+.meow-ef-dt{display:flex;gap:6px;flex-wrap:wrap}
+.meow-ef-static{display:inline-block;font-size:13px;color:var(--ink2);padding:6px 8px}
+.meow-ef-input{height:32px;min-width:0;padding:0 8px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ink);font-size:13.5px;outline:none;transition:background .15s,border-color .15s}
+.meow-ef-input:hover{background:var(--lit)}
+.meow-ef-input:focus{background:var(--panel);border-color:var(--peri)}
+.meow-ef-input.is-wide{width:100%}
+.meow-ef-input::placeholder{color:var(--mut)}
+.meow-ef-check{width:16px;height:16px;margin:8px;accent-color:var(--perid)}
+.meow-ef-inline{display:flex;align-items:center;gap:6px}
+.meow-ef-iconbtn{width:30px;height:30px;flex:none;border-radius:8px;display:grid;place-items:center;color:var(--mut)}
+.meow-ef-iconbtn:hover{background:var(--lit);color:var(--ink)}
+.meow-ef-link{font-size:13.5px;color:var(--ink);padding:6px 8px;border-radius:8px;text-align:left}
+.meow-ef-link:hover{background:var(--lit)}
+.meow-ef-link.is-summary{color:var(--ink2);font-size:13px}
+.meow-ef-sub{margin:6px 0 4px;padding:10px 12px;border-radius:12px;background:var(--paper);border:1px solid var(--line)}
+.meow-ef-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+.meow-ef-chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 6px 0 9px;border-radius:99px;background:var(--perip);border:1px solid color-mix(in srgb,var(--peri) 30%,transparent);font-size:12px;color:var(--ink)}
+.meow-ef-chip button{color:var(--mut);display:grid;place-items:center}
+.meow-ef-chip button:hover{color:var(--red)}
+.meow-ef-tag{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:99px;border:1px solid var(--line2);font-size:12.5px;color:var(--ink2)}
+.meow-ef-tag:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--tc)}
+.meow-ef-tag.is-on{background:color-mix(in srgb,var(--tc) 14%,var(--panel));border-color:color-mix(in srgb,var(--tc) 45%,transparent);color:var(--ink)}
+.meow-ef-seg{display:flex;flex-wrap:wrap;gap:4px;padding-top:2px}
+.meow-ef-seg button{height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;font-weight:600;color:var(--mut)}
+.meow-ef-seg button.is-on{background:var(--ic);border-color:transparent;color:#fff}
+
+.meow-ef-foot{display:flex;align-items:center;gap:8px;padding:10px 14px 12px;border-top:1px solid var(--line);flex:none}
+.meow-ef-delete{height:34px;padding:0 12px;border-radius:99px;font-size:13.5px;font-weight:600;color:var(--red)}
+.meow-ef-delete:hover{background:color-mix(in srgb,var(--red) 9%,transparent)}
+.meow-ef-cancel{height:34px;padding:0 14px;border-radius:99px;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.meow-ef-cancel:hover{background:var(--lit)}
+.meow-ef-save{height:34px;padding:0 20px;border-radius:99px;background:var(--perid);color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 8px 18px -12px color-mix(in srgb,var(--perid) 90%,transparent)}
+.meow-ef-save:hover{filter:brightness(1.06)}
+.meow-ef-save:disabled{opacity:.45;box-shadow:none;cursor:default}

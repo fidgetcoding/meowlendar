@@ -97,10 +97,13 @@ describe('itemOverlapsDay', () => {
 })
 
 describe('mergeDuplicateEventItems', () => {
-  it('collapses identical events but keeps distinct ones and non-events', () => {
-    const a = item({ id: 'a', title: 'Standup' })
-    const dup = item({ id: 'b', title: 'Standup' }) // same title + times
-    const other = item({ id: 'c', title: 'Different' })
+  const on = (calendarId: string, extra: Partial<CalendarEvent> = {}) =>
+    ({ calendar_id: calendarId, attendees: [], ...extra }) as CalendarEvent
+
+  it('collapses identical events from different calendars but keeps distinct ones and non-events', () => {
+    const a = item({ id: 'a', title: 'Standup', event: on('work') })
+    const dup = item({ id: 'b', title: 'Standup', event: on('home') }) // same title + times
+    const other = item({ id: 'c', title: 'Different', event: on('home') })
     const task = item({ id: 't', type: 'task', title: 'Standup' })
 
     const merged = mergeDuplicateEventItems([a, dup, other, task])
@@ -109,6 +112,29 @@ describe('mergeDuplicateEventItems', () => {
     expect(ids).not.toContain('b') // duplicate event dropped
     expect(ids).toContain('c')
     expect(ids).toContain('t') // task with same title is NOT merged
+    expect(merged.find((m) => m.id === 'a')!.duplicates?.map((d) => d.id)).toEqual(['b'])
+  })
+
+  it('keeps two identical events on one calendar', () => {
+    const merged = mergeDuplicateEventItems([item({ id: 'a', event: on('work') }), item({ id: 'b', event: on('work') })])
+    expect(merged.map((m) => m.id)).toEqual(['a', 'b'])
+  })
+
+  it('merges copies with one iCalUID and start, whatever their titles', () => {
+    const merged = mergeDuplicateEventItems([
+      item({ id: 'a', title: 'Vendor call', event: on('work', { ical_uid: 'x@outlook.test' }) }),
+      item({ id: 'b', title: 'Vendor call (Acme)', event: on('home', { ical_uid: 'x@outlook.test' }) }),
+    ])
+    expect(merged.map((m) => m.id)).toEqual(['a'])
+  })
+
+  it('shows the copy you accepted over one you have not answered', () => {
+    const answer = (email: string, response_status: 'accepted' | 'needsAction') => [{ email, response_status, self: true }]
+    const merged = mergeDuplicateEventItems([
+      item({ id: 'a', event: on('home', { ical_uid: 'k', attendees: answer('home@x.test', 'needsAction') }) }),
+      item({ id: 'b', event: on('work', { ical_uid: 'k', attendees: answer('work@x.test', 'accepted') }) }),
+    ])
+    expect(merged.map((m) => m.id)).toEqual(['b'])
   })
 })
 
@@ -146,6 +172,15 @@ describe('isDeclinedEvent', () => {
 
   it('is false without self-email context', () => {
     expect(isDeclinedEvent(base, [])).toBe(false)
+  })
+
+  it("goes by the copy's own account when Google marked it", () => {
+    const answers = [
+      { email: 'work@example.com', response_status: 'accepted' as const, self: true },
+      { email: 'me@example.com', response_status: 'declined' as const },
+    ]
+    expect(isDeclinedEvent({ ...base, attendees: answers }, ['work@example.com', 'me@example.com'])).toBe(false)
+    expect(isDeclinedEvent({ ...base, attendees: [answers[0]!, { ...answers[1]!, self: true }].map((a, i) => ({ ...a, self: i === 1 })) }, [])).toBe(true)
   })
 
   it('is false when self accepted', () => {

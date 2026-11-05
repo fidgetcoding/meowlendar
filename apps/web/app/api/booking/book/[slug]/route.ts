@@ -18,6 +18,7 @@ import { clientIp } from '@/lib/client-ip'
 import { classifyHost } from '@/lib/hosts'
 import {
   computeBlockedIntervals,
+  blocksBookings,
   hasConflict,
   type AvailabilityWindow,
   type BusyBooking,
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const { data: poolEvents, error: eventsError } = await readAll(supabase
     .from('events')
-    .select('start_time, end_time, timezone, is_all_day, recurrence_rule, recurrence_exceptions')
+    .select('start_time, end_time, timezone, is_all_day, visibility, recurrence_rule, recurrence_exceptions')
     .eq('user_id', link.user_id)
     .neq('status', 'cancelled')
     .or(eventsInWindowFilter(windowStart, windowEnd)).order('id'))
@@ -213,7 +214,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const blocked = computeBlockedIntervals({
     bookings: busyBookings,
-    events: (poolEvents ?? []).flatMap((e) =>
+    events: (poolEvents ?? []).filter(blocksBookings).flatMap((e) =>
       expandOccurrences(e, new Date(windowStart), new Date(windowEnd)).map((o) => ({
         start_time: o.start.toISOString(),
         end_time: o.end.toISOString(),

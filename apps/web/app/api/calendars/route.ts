@@ -10,7 +10,7 @@ const createSchema = z.object({
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'color must be a 6-digit hex string')
-    .default('#f9a825'),
+    .default('#e8930c'),
 })
 
 const MAX_LOCAL_CALENDARS = 50
