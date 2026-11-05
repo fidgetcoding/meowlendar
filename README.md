@@ -22,6 +22,20 @@ I wanted tasks plus calendar, unlimited calendars, a link to my 2ndBrain, and a 
 
 The name is for the brainrot and the meme value. It started as a poop-themed calendar called Poolendar, so really the cats are a step up. And I'm using it as the base for anything else I build that needs a calendar.
 
+## Google sign-in and calendar sync
+
+**Google is optional, but each self-hosted installation needs its own Google Cloud OAuth client** if you want the **Continue with Google** button or Google Calendar sync. The button is not configured by the default local setup; clicking it before setup returns a provider-not-enabled error. For a local calendar without Google, use **Sign up** with an email and password instead.
+
+For Google, follow the complete [Google setup in DEPLOY.md](DEPLOY.md#2-google-cloud-setup):
+
+1. Create or choose a Google Cloud project for your installation and enable the Google Calendar API.
+2. Configure the OAuth consent screen. For an external app in testing, add each Google account you want to use as a test user.
+3. Create a **Web application** OAuth client. For the default local setup, add `http://localhost:3000` as an authorized JavaScript origin and add both `http://127.0.0.1:54321/auth/v1/callback` and `http://localhost:3000/api/google/callback` as authorized redirect URIs. If your Supabase API uses a different port, use its actual API URL for the first callback.
+4. Add the client ID and secret to the local app and Supabase environment files as described in DEPLOY.md, then restart Supabase and the app. Keep the secret out of chat, screenshots and Git; do not commit either environment file.
+5. Sign in with Google, or sign in with email and use **Settings > Calendars > Connect Google Account** to connect calendars separately.
+
+Google's testing mode can expire calendar refresh tokens after seven days; DEPLOY.md explains the publishing and verification trade-offs. Hosted installations use their own domain and Supabase callback URLs.
+
 ## Set it up, the easy way
 
 Paste this into Claude Code or whatever agent you use. It stops and asks when it needs you.
@@ -61,9 +75,9 @@ THEN WIRE THE MCP
 
 ASK ME BEFORE GOOGLE
 
-8. Ask if I want Google Calendar. If not, stop here. Everything works on the local calendar.
+8. Ask if I want Google sign-in or Google Calendar. If not, stop here. Everything works on the local calendar. The Google sign-in button does not work until the provider is configured.
 
-   If yes, follow DEPLOY.md section 2 and walk me through the Google Cloud Console clicks one at a time. You cannot do them for me. Ask me to give you the client ID and secret, add them as that section shows, and restart.
+   If yes, follow DEPLOY.md section 2 and walk me through the Google Cloud Console clicks one at a time. You cannot do them for me. Have me download the client JSON locally; read it without printing secrets, add the credentials as that section shows, and restart.
 
 9. Ask me to go to Settings > Calendars > Connect Google Account, approve it, and repeat for each account.
    Verify: the MCP list_calendars tool shows the accounts.
