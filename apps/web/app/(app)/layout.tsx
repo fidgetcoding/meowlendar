@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
@@ -231,6 +232,14 @@ function AppChrome({ children }: { children: React.ReactNode }) {
         queryClient.invalidateQueries({ queryKey: eventKeys.all })
       })
   }, [queryClient])
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('google_sync') !== 'failed') return
+    toast.error("Google connected, but calendar sync failed. We'll keep trying.")
+    url.searchParams.delete('google_sync')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
 
   // While the app is open it keeps itself in sync. This is what covers a deployment
   // whose scheduled job only runs daily, like Vercel's free plan.

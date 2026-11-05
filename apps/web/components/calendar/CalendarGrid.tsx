@@ -20,6 +20,7 @@ import { DayColumn } from './DayColumn'
 import { CalendarDragOverlay } from './CalendarDragOverlay'
 import { MonthGrid } from './MonthGrid'
 import { NewItemPopover } from './NewItemPopover'
+import { getReadableTextColor } from './event-color'
 import { eventsToItems, tasksToItems, routinesToItems } from './grid-items'
 import {
   getVisibleDays,
@@ -56,6 +57,7 @@ interface CalendarGridProps {
   showWeekNumbers?: boolean
   /** Connected-account emails — used to detect declined events (#5). */
   selfEmails?: string[]
+  itemPreviewOpen?: boolean
   onItemClick?: (item: CalendarItemData, anchorRect?: DOMRect) => void
   onItemDoubleClick?: (item: CalendarItemData) => void
   onTimeSlotClick?: (date: Date, time: Date) => void
@@ -112,6 +114,7 @@ export function CalendarGrid({
   mergeDuplicateEvents = false,
   showWeekNumbers = false,
   selfEmails = [],
+  itemPreviewOpen = false,
   onItemClick,
   onItemDoubleClick,
   onTimeSlotClick,
@@ -342,7 +345,7 @@ export function CalendarGrid({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col flex-1 overflow-hidden" onContextMenu={handleGridContextMenu}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden" onContextMenu={handleGridContextMenu}>
         <WeekHeader
           days={visibleDays}
           showWeekNumbers={showWeekNumbers}
@@ -370,7 +373,7 @@ export function CalendarGrid({
                       data-item-id={item.id}
                       data-item-type={item.type}
                       className="text-xs px-2 py-0.5 rounded mb-0.5 cursor-pointer truncate"
-                      style={{ backgroundColor: item.color || 'var(--accent)', color: '#fff' }}
+                      style={{ backgroundColor: item.color || 'var(--accent)', color: getReadableTextColor(item.color) }}
                       onClick={(e) =>
                         onItemClick?.(item, (e.currentTarget as HTMLElement).getBoundingClientRect())
                       }
@@ -387,7 +390,7 @@ export function CalendarGrid({
 
         <div
           ref={scrollRef}
-          onMouseDownCapture={() => { dismissingPopoverRef.current = popoverState !== null }}
+          onMouseDownCapture={() => { dismissingPopoverRef.current = popoverState !== null || itemPreviewOpen }}
           className="flex-1 overflow-y-auto overflow-x-hidden"
         >
           <div className="flex min-h-0">

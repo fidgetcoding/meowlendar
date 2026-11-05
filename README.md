@@ -31,8 +31,37 @@ For Google, follow the complete [Google setup in DEPLOY.md](DEPLOY.md#2-google-c
 1. Create or choose a Google Cloud project for your installation and enable the Google Calendar API.
 2. Configure the OAuth consent screen. For an external app in testing, add each Google account you want to use as a test user.
 3. Create a **Web application** OAuth client. For the default local setup, add `http://localhost:3000` as an authorized JavaScript origin and add both `http://127.0.0.1:54321/auth/v1/callback` and `http://localhost:3000/api/google/callback` as authorized redirect URIs. If your Supabase API uses a different port, use its actual API URL for the first callback.
-4. Add the client ID and secret to the local app and Supabase environment files as described in DEPLOY.md, then restart Supabase and the app. Keep the secret out of chat, screenshots and Git; do not commit either environment file.
-5. Sign in with Google, or sign in with email and use **Settings > Calendars > Connect Google Account** to connect calendars separately.
+4. Download the client JSON. Copy its client ID and secret into the following local files. Keep the secret out of chat, screenshots, logs and Git.
+
+   Add to `apps/web/.env.local` without removing its existing values:
+
+   ```dotenv
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
+
+   Create `supabase/.env` with the same values:
+
+   ```dotenv
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=your-client-id
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=your-client-secret
+   ```
+
+   In `supabase/config.toml`, set `enabled = true` under `[auth.external.google]` for this installation. Don't commit that local configuration change or either environment file. Protect the secrets with `chmod 600 apps/web/.env.local supabase/.env`.
+
+5. From the project root, stop the app, then restart the local Supabase project and app. **Don't use `--no-backup`:** it deletes the local database volumes.
+
+   ```bash
+   set -a
+   . supabase/.env
+   set +a
+   supabase stop
+   supabase start
+   pnpm dev
+   ```
+
+   The Supabase CLI can print local service keys; don't share its output. If you use a nondefault Supabase project directory, run the commands against that project instead.
+6. Open `http://localhost:3000` and choose **Continue with Google**. On first sign-in, Meowlendar takes you through calendar consent and starts the initial sync automatically. Approve the requested calendar access; Google may show an unverified-app warning while your app is in testing. To connect another account later, use **Settings > Calendars > Connect Google Account**. An email login works with local calendars and can connect Google later the same way.
 
 Google's testing mode can expire calendar refresh tokens after seven days; DEPLOY.md explains the publishing and verification trade-offs. Hosted installations use their own domain and Supabase callback URLs.
 
@@ -79,7 +108,7 @@ ASK ME BEFORE GOOGLE
 
    If yes, follow DEPLOY.md section 2 and walk me through the Google Cloud Console clicks one at a time. You cannot do them for me. Have me download the client JSON locally; read it without printing secrets, add the credentials as that section shows, and restart.
 
-9. Ask me to go to Settings > Calendars > Connect Google Account, approve it, and repeat for each account.
+9. On first Google sign-in, follow the automatic calendar-consent flow and let me approve it. For additional accounts, ask me to use Settings > Calendars > Connect Google Account.
    Verify: the MCP list_calendars tool shows the accounts.
 
 Finish by telling me which steps passed, which were skipped, and what is still running.
@@ -106,7 +135,7 @@ Finish by telling me which steps passed, which were skipped, and what is still r
        -- node /absolute/path/to/meowlendar/packages/mcp/dist/index.js
      ```
    - `claude mcp list` should say Connected. Ask for a task with a start and end time, and watch it land.
-7. **Add Google if you want it.** [DEPLOY.md](DEPLOY.md) has the clicks. I've tested the sync against a local fake of Google's API, and I haven't connected a real account yet.
+7. **Add Google if you want it.** [DEPLOY.md](DEPLOY.md) has the clicks. The setup uses your own Google Cloud OAuth client; first sign-in offers calendar consent automatically.
 8. **Host it if you want.** DEPLOY.md covers hosted Supabase and Vercel, and I haven't run those yet either. Read [SECURITY.md](SECURITY.md) first.
 
 Why do some internals say `poolendar`? That's the old name. Renaming the rest isn't worth breaking things, so it stays.
@@ -127,7 +156,7 @@ Why do some internals say `poolendar`? That's the old name. Renaming the rest is
 
 ## How I test it
 
-The November 4 local maintenance pass verified 1,643 unit tests, 24 browser checks, and 150 integration tests against a fresh local Supabase and a production build. Google, Telegram, Resend and push are local fakes in those runs. Browser tests run headless and silent. The migrations and fixes remain local review changes until applied to an install; see [EVOLUTION.md](EVOLUTION.md).
+The November 4 maintenance pass verified 1,643 unit tests, 24 browser checks, and 150 integration tests against a fresh local Supabase and a production build. Google, Telegram, Resend and push were local fakes in those automated runs. On November 5, a real Google account was connected to a local installation and its calendars and events were pulled successfully; real Google writes and other providers were not part of that check. Browser tests run headless and silent. Existing installations need to apply the new migrations safely; see [DEPLOY.md](DEPLOY.md).
 
 ## License
 

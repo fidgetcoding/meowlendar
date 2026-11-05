@@ -16,7 +16,7 @@ pnpm setup:local
 pnpm dev
 ```
 
-`pnpm setup:local` checks the tools above, starts Supabase, applies the migrations, and writes `apps/web/.env.local`. Re-running it keeps your secrets and anything you added by hand.
+`pnpm setup:local` checks the tools above, starts Supabase and writes `apps/web/.env.local`. A fresh database receives the migrations. If an existing local database is already present, check `supabase migration list --local` before using it: back it up and apply any pending migrations without resetting it. Re-running setup keeps your app secrets and anything you added by hand.
 
 Open http://localhost:3000, click **Sign up**, and create an account with any email and password. Local email confirmation is off. If you turn it on, the mail lands at http://127.0.0.1:54324.
 
@@ -66,18 +66,30 @@ GOOGLE_CLIENT_SECRET=...
 Sign-in with Google, in `supabase/.env` (gitignored):
 
 ```
-SUPABASE_AUTH_EXTERNAL_GOOGLE_ENABLED=true
 SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
 SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
 ```
 
-Then run `supabase stop && supabase start` and restart `pnpm dev`.
+In `supabase/config.toml`, set `enabled = true` in the `[auth.external.google]` section for this installation. Keep that local configuration change and both environment files out of Git. Protect the secret files with `chmod 600 apps/web/.env.local supabase/.env`.
+
+From the project root, stop the app and restart the local Supabase project with its environment loaded:
+
+```bash
+set -a
+. supabase/.env
+set +a
+supabase stop
+supabase start
+pnpm dev
+```
+
+Do not use `supabase stop --no-backup`; it deletes local data volumes. The CLI may print local service keys, so don't share its output. If using a separate Supabase work directory or different ports, target that directory and use its actual callback URL.
 
 If you skip this, **Continue with Google** shows a raw `provider is not enabled` message and **Connect Google Account** returns `Google Calendar is not configured on this deployment`.
 
 ### Connect calendars
 
-**Settings > Calendars > Connect Google Account.** Repeat for each account. The code has no limit on accounts, and Google shows an account picker each time. Every calendar on the account comes in, and you can turn each one off in the same place.
+On a first Google sign-in, Meowlendar sends you through the calendar consent flow and begins syncing automatically. You can also sign in with email and connect Google later via **Settings > Calendars > Connect Google Account**. Use the same setting to add further Google accounts. Every calendar on the account comes in, and you can turn each one off in the same place.
 
 ## 3. Automatic sync
 

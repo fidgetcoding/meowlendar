@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
   // 6. First sync, of every calendar on the account. It gets a few seconds inline so
   //    the user lands on a filled calendar; whatever is left finishes after the
   //    redirect, and the scheduled job picks up anything after that.
+  let syncFailed = false
   try {
     const first = await pullChanges(accountId, { deadlineMs: Date.now() + INLINE_SYNC_MS })
     if (!first.complete) {
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
       }))
     }
   } catch (err) {
+    syncFailed = true
     console.error('[google/callback] initial sync failed (poll will retry):', err)
   }
 
@@ -89,7 +91,7 @@ export async function GET(request: NextRequest) {
     console.error('[google/callback] webhook registration failed (renewal cron will retry):', err)
   }
 
-  const response = NextResponse.redirect(`${appUrl()}/?google_connected=true`)
+  const response = NextResponse.redirect(`${appUrl()}/?google_connected=true${syncFailed ? '&google_sync=failed' : ''}`)
   response.cookies.set('oauth_state', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

@@ -6,6 +6,7 @@ import { format, isSameDay, isSameMonth, isToday } from 'date-fns'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CalendarItemData } from './calendar-types'
+import { getReadableTextColor } from './event-color'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DEFAULT_MAX_VISIBLE_ITEMS = 4
@@ -292,7 +293,7 @@ function MonthPill({ item, onItemClick, onItemDoubleClick }: MonthPillProps) {
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
       >
-        <span className="text-[10px] font-medium text-white truncate">
+        <span className="text-[10px] font-medium truncate" style={{ color: getReadableTextColor(item.color) }}>
           {item.title}
         </span>
       </button>

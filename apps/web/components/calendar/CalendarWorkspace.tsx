@@ -369,6 +369,7 @@ export function CalendarWorkspace({
         mergeDuplicateEvents={store.mergeDuplicateEvents}
         showWeekNumbers
         selfEmails={selfEmails}
+        itemPreviewOpen={preview !== null}
         onItemClick={handleItemClick}
         onItemDoubleClick={handleItemDoubleClick}
         onItemReschedule={handleReschedule}

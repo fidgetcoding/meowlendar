@@ -41,6 +41,7 @@ import type {
 } from '@poolendar/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { calendarKeys } from '@/lib/hooks/use-calendars'
+import { eventKeys } from '@/lib/hooks/use-events'
 
 export type SettingsTab =
   | 'shortcuts'
@@ -270,15 +271,20 @@ export function SettingsModal({
   }
 
   async function handleResyncAccount(accountId: string) {
-    const res = await fetch('/api/google/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ google_account_id: accountId }),
-    })
-    if (res.ok) {
+    try {
+      const res = await fetch('/api/google/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ google_account_id: accountId }),
+      })
+      if (!res.ok) throw new Error('Resync failed')
+      await loadCalendars()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+        queryClient.invalidateQueries({ queryKey: eventKeys.all }),
+      ])
       toast.success('Calendar resynced')
-      loadCalendars()
-    } else {
+    } catch {
       toast.error('Resync failed')
     }
   }

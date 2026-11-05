@@ -6,8 +6,12 @@ import {
   format,
   startOfWeek,
   endOfWeek,
+  addDays,
   isSameMonth,
   isSameYear,
+  differenceInCalendarDays,
+  differenceInCalendarWeeks,
+  differenceInCalendarMonths,
 } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { Select, type SelectOption } from '../ui/Select'
@@ -59,9 +63,10 @@ const VIEW_OPTIONS: SelectOption[] = [
 // Date label formatting
 // ---------------------------------------------------------------------------
 
-function formatDateLabel(
+export function formatDateLabel(
   date: Date,
-  view: CalendarView | 'day' | 'week' | 'month'
+  view: CalendarView | 'day' | 'week' | 'month',
+  customDays = 3,
 ): string {
   switch (view) {
     case 'day':
@@ -69,8 +74,10 @@ function formatDateLabel(
     case 'week':
     case '2weeks':
     case 'custom': {
-      const weekStart = startOfWeek(date, { weekStartsOn: 0 })
-      const weekEnd = endOfWeek(date, { weekStartsOn: 0 })
+      const weekStart = view === 'custom' ? date : startOfWeek(date, { weekStartsOn: 0 })
+      const weekEnd = view === 'custom'
+        ? addDays(date, Math.max(1, Math.min(9, customDays)) - 1)
+        : view === '2weeks' ? addDays(weekStart, 13) : endOfWeek(date, { weekStartsOn: 0 })
       if (!isSameYear(weekStart, weekEnd)) {
         return `${format(weekStart, 'MMM d, yyyy')} - ${format(weekEnd, 'MMM d, yyyy')}`
       }
@@ -82,6 +89,21 @@ function formatDateLabel(
     case 'month':
       return format(date, 'MMMM yyyy')
   }
+}
+
+export function formatPeriodContext(date: Date, view: CalendarView, now = new Date()): string {
+  if (view === 'month') {
+    const offset = differenceInCalendarMonths(date, now)
+    return offset === 0 ? 'This month' : offset === 1 ? 'Next month' : offset === -1 ? 'Last month' : format(date, 'MMMM yyyy')
+  }
+  if (view === 'week' || view === '2weeks') {
+    const offset = differenceInCalendarWeeks(date, now, { weekStartsOn: 0 })
+    if (view === '2weeks') return offset === 0 ? 'This 2-week period' : `2 weeks from ${format(startOfWeek(date), 'MMM d')}`
+    return offset === 0 ? 'This week' : offset === 1 ? 'Next week' : offset === -1 ? 'Last week' : `Week of ${format(startOfWeek(date), 'MMM d')}`
+  }
+  const offset = differenceInCalendarDays(date, now)
+  const day = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : offset === -1 ? 'Yesterday' : format(date, 'MMM d')
+  return view === 'custom' ? `From ${day}` : day
 }
 
 // ---------------------------------------------------------------------------
@@ -136,17 +158,9 @@ export function CalendarHeader({
       )}
     >
       <div className="flex items-center gap-1.5 md:gap-3">
-        <button
-          type="button"
-          onClick={onToday}
-          className={cn(
-            'text-xs md:text-sm font-medium text-[var(--fg)]',
-            'hover:underline underline-offset-4',
-            'transition-all duration-150'
-          )}
-        >
-          Today
-        </button>
+        <span className="text-xs md:text-sm font-medium text-[var(--fg)]">
+          {formatPeriodContext(currentDate, view)}
+        </span>
 
         <div className="flex items-center gap-0.5 md:gap-1">
           <button
@@ -189,7 +203,7 @@ export function CalendarHeader({
         </div>
 
         <h2 className="text-sm md:text-lg font-semibold text-[var(--fg)] truncate max-w-[140px] md:max-w-none">
-          {formatDateLabel(currentDate, view)}
+          {formatDateLabel(currentDate, view, customDays)}
         </h2>
       </div>
 

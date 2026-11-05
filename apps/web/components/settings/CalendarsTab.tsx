@@ -12,7 +12,7 @@ interface CalendarsTabProps {
   onConnect: () => void
   onDisconnect: (id: string) => void
   onToggleCalendar: (id: string, active: boolean) => void
-  onResync: (accountId: string) => void
+  onResync: (accountId: string) => Promise<void>
   onCreateLocal: (name: string) => void
   onRenameLocal: (id: string, name: string) => void
   onDeleteLocal: (id: string) => void
@@ -34,6 +34,17 @@ export function CalendarsTab({
   onTaskSyncChange,
 }: CalendarsTabProps) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(() => new Set())
+
+  async function resync(accountId: string) {
+    if (syncingIds.has(accountId)) return
+    setSyncingIds((ids) => new Set(ids).add(accountId))
+    try {
+      await onResync(accountId)
+    } finally {
+      setSyncingIds((ids) => { const next = new Set(ids); next.delete(accountId); return next })
+    }
+  }
   const [newLocalName, setNewLocalName] = useState('')
   const localCalendars = calendars.filter((c) => c.source === 'local')
   const writableGoogleCalendars = calendars.filter(
@@ -143,12 +154,14 @@ export function CalendarsTab({
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onResync(account.id)}
+                    onClick={() => { void resync(account.id) }}
+                    disabled={syncingIds.has(account.id)}
+                    aria-busy={syncingIds.has(account.id)}
                     className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
-                    aria-label="Resync account"
-                    title="Resync"
+                    aria-label={syncingIds.has(account.id) ? "Syncing account" : "Resync account"}
+                    title={syncingIds.has(account.id) ? "Syncing" : "Resync"}
                   >
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className={syncingIds.has(account.id) ? "h-4 w-4 animate-spin motion-reduce:animate-none" : "h-4 w-4"} />
                   </button>
                   {disconnectingId === account.id ? (
                     <div className="flex items-center gap-1">

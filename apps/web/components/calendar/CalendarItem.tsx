@@ -6,6 +6,7 @@ import { CheckSquare, Repeat2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import type { CalendarItemData, CalendarItemType } from './calendar-types'
+import { getReadableTextColor } from './event-color'
 
 interface CalendarItemProps {
   item: CalendarItemData
@@ -116,12 +117,13 @@ export const CalendarItem = React.memo(function CalendarItem({
 
   const mergedStyle: React.CSSProperties = {
     ...positionStyle,
-    opacity: isDragging ? 0.4 : shouldDim ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : shouldDim ? 0.75 : 1,
     zIndex: isDragging ? 100 : undefined,
   }
 
   if (item.type === 'event') {
     const barColor = darkenColor(item.color, 40)
+    const textColor = getReadableTextColor(item.color)
 
     return (
       <div
@@ -151,15 +153,15 @@ export const CalendarItem = React.memo(function CalendarItem({
         />
         <div className="relative pl-2.5 pr-2 py-1 min-h-0 overflow-hidden">
           {isCompact ? (
-            <p className="text-xs font-medium text-white truncate leading-tight">
+            <p className="text-xs font-medium truncate leading-tight" style={{ color: textColor }}>
               {item.title}
             </p>
           ) : (
             <>
-              <p className="text-xs font-medium text-white truncate leading-tight">
+              <p className="text-xs font-medium truncate leading-tight" style={{ color: textColor }}>
                 {item.title}
               </p>
-              <p className="text-[10px] text-white/70 truncate leading-tight mt-0.5">
+              <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: textColor }}>
                 {formatTimeRange(item.startTime, item.endTime)}
               </p>
             </>

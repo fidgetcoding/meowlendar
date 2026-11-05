@@ -27,3 +27,20 @@ it('dismisses a creation bubble on the first grid click and opens another on the
   clickSlot(600)
   expect(screen.queryByRole('dialog')).not.toBeNull()
 })
+
+it('dismisses an existing item preview without creating a new draft', () => {
+  const props = { view: 'day' as const, currentDate: new Date(2026, 10, 5), events: [], tasks: [], routines: [], calendars: [] }
+  const { container, rerender } = render(<CalendarGrid {...props} itemPreviewOpen />)
+  const column = container.querySelector('[data-day-column]') as HTMLElement
+  fireEvent.mouseDown(column, { button: 0, clientY: 300 })
+  fireEvent.mouseUp(column, { button: 0, clientY: 300 })
+  fireEvent.click(column, { button: 0, clientY: 300 })
+  act(() => { vi.advanceTimersByTime(350) })
+  expect(screen.queryByRole('dialog')).toBeNull()
+  rerender(<CalendarGrid {...props} itemPreviewOpen={false} />)
+  fireEvent.mouseDown(column, { button: 0, clientY: 400 })
+  fireEvent.mouseUp(column, { button: 0, clientY: 400 })
+  fireEvent.click(column, { button: 0, clientY: 400 })
+  act(() => { vi.advanceTimersByTime(350) })
+  expect(screen.queryByRole('dialog')).not.toBeNull()
+})
