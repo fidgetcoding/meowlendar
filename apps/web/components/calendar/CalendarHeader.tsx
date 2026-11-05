@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, Settings2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Circle, Settings2 } from 'lucide-react'
 import {
   format,
   startOfWeek,
@@ -161,6 +161,16 @@ export function CalendarHeader({
             )}
           >
             <ChevronLeft className="w-4 h-4 md:w-[18px] md:h-[18px]" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onToday}
+            aria-label="Go to today"
+            title="Go to today"
+            className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md text-[var(--muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)] transition-colors duration-150"
+          >
+            <Circle className="w-3.5 h-3.5" strokeWidth={2.5} />
           </button>
 
           <button

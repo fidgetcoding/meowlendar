@@ -123,6 +123,7 @@ export function CalendarGrid({
   onTaskCheckboxClick,
 }: CalendarGridProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const dismissingPopoverRef = React.useRef(false)
   const [activeItem, setActiveItem] = React.useState<Active | null>(null)
   const [popoverState, setPopoverState] = React.useState<{
     date: Date
@@ -263,6 +264,10 @@ export function CalendarGrid({
   }
 
   function handleTimeSlotClick(date: Date, time: Date, endTime?: Date) {
+    if (dismissingPopoverRef.current) {
+      dismissingPopoverRef.current = false
+      return
+    }
     if (onTimeSlotClick) {
       onTimeSlotClick(date, time)
     }
@@ -382,6 +387,7 @@ export function CalendarGrid({
 
         <div
           ref={scrollRef}
+          onMouseDownCapture={() => { dismissingPopoverRef.current = popoverState !== null }}
           className="flex-1 overflow-y-auto overflow-x-hidden"
         >
           <div className="flex min-h-0">
