@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please report privately through **Security > Report a vulnerability** on the GitHub repository. Do not open a public issue. Include the steps to reproduce and what an attacker gains.
+Please report privately: email **nate@lorecraft.io**, or use **Security > Report a vulnerability** on the GitHub repository (<https://github.com/fidgetcoding/meowlendar/security/advisories/new>). Do not open a public issue. Include the steps to reproduce and what an attacker gains.
 
 There is no hosted Meowlendar service. Every install is run by its owner, so a fix only reaches you when you pull it and apply new migrations.
 
