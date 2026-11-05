@@ -1,6 +1,6 @@
-# Meowlendar, on one page
+# Meowlendar: the essence
 
-**What it is.** A self-hosted calendar and task app with a real API and a 63-tool MCP server, so an AI agent can put a task straight on your calendar grid. Next.js, Supabase, MIT.
+**What it is.** A calendar and task app you host yourself, with a real REST API and a 63-tool MCP server, so your AI agent can put a task straight on your calendar grid. Next.js, Supabase, MIT.
 
 **Who it's for.** People who live with an AI agent and want it to run their calendar. Anyone sick of paying monthly for calendar software. Builders who need a calendar base to start from.
 
@@ -9,27 +9,30 @@
 **What's different.**
 - API-scheduled tasks land on the grid with no drag.
 - Works with no Google account. Every account starts with a local calendar.
-- You own all of it. **I don't host a database for anyone.** You set up your own Supabase.
+- With Google, one consent screen signs you in and connects your calendars, and the first sync starts by itself.
+- You own all of it. **I don't host a database for anyone.** You set up your own Supabase, and your own Google Cloud login if you want Google. The README walks you, or your agent, through both.
 - The MCP covers the app, 63 tools on one key.
 - It syncs with an Obsidian vault both ways, with a dry run and a backup first.
 - The repo documents its own failure: `specs/OVERHAUL.md` explains how 1,255 passing tests sat on top of an app where nothing worked.
 
-**How to try it.** Needs Node 22+, pnpm, the Supabase CLI and Docker. `git clone https://github.com/fidgetcoding/meowlendar && cd meowlendar && pnpm install && pnpm setup:local && pnpm dev`. Or paste the block in the README into your agent.
+**How to try it.** Needs Node 22+, pnpm, the Supabase CLI and Docker.
 
-## What works today
+```bash
+git clone https://github.com/fidgetcoding/meowlendar && cd meowlendar
+pnpm install && pnpm setup:local && pnpm dev
+```
 
-From a fresh run on an empty local database, November 2, 2026, and again in CI:
+Open `http://localhost:3000`, click Sign up, and use any email. Or paste the block in the [README](README.md) into your agent and let it do the setup. Google is optional, and the README has its own steps for it.
 
-- 1,601 unit tests, 24 browser tests, lint clean.
-- 137 integration tests on a real local Supabase and a production build. Google, Telegram, Resend and push are local fakes in these.
-- Every MCP tool called against the real stack.
-- Local calendars, recurring events, routines, booking pages, subdomain booking on `localhost`.
-- Automatic sync, all calendars with a picker, tasks mirrored to Google: proven against the fake Google.
-- The 2ndBrain link, on temp vaults.
-- The MCP tarball, installed and run from an empty npm cache.
-- Cross-user attacks that worked before the security pass are refused after it.
+**What works today.** From CI on the latest commit (`72f1fff`, November 5, 2026) and the runs logged in [EVOLUTION.md](EVOLUTION.md):
 
-See [EVOLUTION.md](EVOLUTION.md) for how it got here.
-
-
-Local maintenance verification, November 4, 2026: 1,643 unit tests, 150 real local-database integration tests, 24 browser checks, build/lint/types passed. This review branch adds atomic booking/task/recurrence writes, sync-race protection, complete database paging and timezone fixes. Nothing has been deployed or pushed; the November 2 history above remains the evidence for the earlier packaging checks. See [EVOLUTION.md](EVOLUTION.md).
+- 1,664 unit tests, lint and types clean.
+- 150 integration tests on a real local Supabase and a production build. Google, Telegram, Resend and push are local fakes in these.
+- 25 browser tests on the same stack, including a check that the grid scrolls through the whole day. One needed a retry on that run.
+- The packed MCP starts from a clean npm cache and lists 63 tools.
+- My own Google account on a local install, November 5: one consent screen, then 3 calendars and 30 events pulled in. Real Google writes haven't been tested yet.
+- Two people booking overlapping slots on different links from the same owner: only one wins, proven with real concurrent transactions on a local database (November 4).
+- Lists page through everything. Fixtures of 1,207 tasks, 1,207 events and 1,207 routine states come back whole.
+- Recurring events expand faster: median 876.84 ms before and 138.61 ms after, on 2,100 occurrences. That's about 84% less time on one benchmark, not a whole-app speed claim.
+- Cross-user attacks that worked before the November 1 security pass are refused after it.
+- The 2ndBrain link, tested on temp vaults.
