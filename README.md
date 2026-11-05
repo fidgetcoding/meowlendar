@@ -6,6 +6,10 @@
 
 Tell your AI agent to put a task on Thursday at 2 and it lands on the grid, with no inbox and no dragging.
 
+## ▶ [Visit the site: meowlendar.com](https://meowlendar.com)
+
+The site has the [setup steps](https://meowlendar.com/setup/) too.
+
 **Want the real story?** [ESSENCE.md](ESSENCE.md) is the one-pager. [EVOLUTION.md](EVOLUTION.md) has the best screw-up in the whole collection: 1,255 passing tests on an app where nothing worked.
 
 ## What it is
