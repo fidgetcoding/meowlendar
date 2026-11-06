@@ -100,6 +100,10 @@ export const TaskCard = React.memo(function TaskCard({
       data-task-card
       data-task-id={task.id}
       className={cn('meow-card group', isCompleted && 'is-done', isAgent && 'is-agent', hasCat && 'has-cat')}
+      // The whole card is the pointer/touch drag surface; the sensors' 5px / 300ms activation
+      // keeps a plain click opening the task. Keyboard dragging stays on the grip below.
+      onPointerDown={isDragOverlay ? undefined : (listeners?.onPointerDown as React.PointerEventHandler<HTMLDivElement> | undefined)}
+      onTouchStart={isDragOverlay ? undefined : (listeners?.onTouchStart as React.TouchEventHandler<HTMLDivElement> | undefined)}
       onClick={() => onTaskClick(task)}
       role="button"
       tabIndex={0}

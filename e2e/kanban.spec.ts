@@ -19,9 +19,9 @@ async function openBoard(page: Page) {
  * threshold, then step to the column's drop zone.
  */
 async function dragCardToColumn(page: Page, card: Locator, status: string) {
-  // The drag listeners live on the card's grip handle (not the whole card), so
-  // the press must land on the handle to activate the sensor.
-  const handle = card.locator('.cursor-grab').first()
+  // Press on the card body (its title), the way a person grabs a card. The grip
+  // handle is invisible until hover, so a drag that only works from it is broken.
+  const handle = card.locator('.meow-card-ttl').first()
   const handleBox = await handle.boundingBox()
   const column = page.locator(`[data-kanban-column="${status}"]`)
   const colBox = await column.boundingBox()
