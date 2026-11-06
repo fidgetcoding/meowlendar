@@ -39,6 +39,7 @@ export default function LoginPage() {
   const supabase = createClient()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -195,9 +196,10 @@ export default function LoginPage() {
               required
               autoComplete="email"
             />
+            <div className="relative">
             <Input
               label="Password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -206,7 +208,19 @@ export default function LoginPage() {
                 mode === 'login' ? 'current-password' : 'new-password'
               }
               minLength={6}
+              style={{ paddingRight: '4.5rem' }}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              className="absolute right-3 bottom-2.5 text-sm font-medium"
+              style={{ color: 'var(--primary)' }}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+            </div>
 
             {error && (
               <p
